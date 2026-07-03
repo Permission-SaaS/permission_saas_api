@@ -1,4 +1,6 @@
 .git
 .idea
+.vscode
+docs
 target
 .mvn/wrapper/maven-wrapper.jar
