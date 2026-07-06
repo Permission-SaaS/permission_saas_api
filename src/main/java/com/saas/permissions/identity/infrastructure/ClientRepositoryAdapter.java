@@ -68,16 +68,6 @@ public class ClientRepositoryAdapter implements ClientRepository {
                 .lastLoginAt(clientEntity.getLastLoginAt())
                 .createdAt(clientEntity.getCreatedAt())
                 .updatedAt(clientEntity.getUpdatedAt())
-                .providerId(clientEntity.getProviderId())
-                .status(clientEntity.getStatus())
-                .emailVerified(clientEntity.isEmailVerified())
-                .blocked(clientEntity.isBlocked())
-                .loginAttempts(clientEntity.getLoginAttempts())
-                .blockExpiresAt(clientEntity.getBlockExpiresAt())
-                .emailVerifiedAt(clientEntity.getEmailVerifiedAt())
-                .lastLoginAt(clientEntity.getLastLoginAt())
-                .createdAt(clientEntity.getCreatedAt())
-                .updatedAt(clientEntity.getUpdatedAt())
                 .deletedAt(clientEntity.getDeletedAt())
                 .build();
     }
