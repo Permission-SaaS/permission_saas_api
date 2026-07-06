@@ -11,6 +11,7 @@ public class ClientResponseMapper implements Mapper<Client, ClientResponse> {
     @Override
     public ClientResponse map(Client client) {
         return new ClientResponse(
+                client.getId(),
                 client.getName(),
                 client.getEmail(),
                 client.getPhone(),

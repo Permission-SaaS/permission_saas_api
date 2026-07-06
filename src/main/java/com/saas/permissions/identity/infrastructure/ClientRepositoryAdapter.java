@@ -1,6 +1,8 @@
 package com.saas.permissions.identity.infrastructure;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.stereotype.Repository;
 
@@ -18,6 +20,21 @@ public class ClientRepositoryAdapter implements ClientRepository {
     @Override
     public boolean existsByEmail(String email) {
         return jpa.existsByEmail(email);
+    }
+
+    @Override
+    public boolean existsById(UUID id) {
+        return jpa.existsById(id);
+    }
+
+    @Override
+    public List<Client> findAll() {
+        return jpa.findAll().stream().map(this::toDomain).toList();
+    }
+
+    @Override
+    public Optional<Client> findById(UUID id) {
+        return jpa.findById(id).map(this::toDomain);
     }
 
     @Override
