@@ -1,10 +1,10 @@
 CREATE TABLE clients (
     -- Primary Key
-    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    
+    id              UUID        CONSTRAINT pk_clients PRIMARY KEY DEFAULT gen_random_uuid(),
+
     -- User Information
     name            VARCHAR(255) NOT NULL,
-    email           VARCHAR(255) NOT NULL CONSTRAINT clients_email_key UNIQUE,
+    email           VARCHAR(255) NOT NULL CONSTRAINT uq_clients_email UNIQUE,
     phone           VARCHAR(20),
     password_hash   TEXT,
     
