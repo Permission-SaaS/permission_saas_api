@@ -22,6 +22,8 @@ api/                 ← expõe via HTTP
 
 **Regra de ouro:** as dependências apontam sempre para dentro. `api` conhece `application`, `application` conhece `domain`, mas `domain` não conhece nada além de si mesmo — nunca JPA, nunca HTTP, nunca outro módulo.
 
+**Submódulos dentro de um módulo:** quando um módulo tem mais de um agregado com ciclo de vida próprio, cada camada ganha uma subpasta por agregado (ex.: `billing/domain/plan/` e `billing/domain/subscription/`), replicada em `application/`, `infrastructure/` e `api/`. Isso mantém a regra de ouro (dependências sempre para dentro) e ainda separa visualmente o que pertence a `Plan` do que pertence a `Subscription`. Classes que só existem por causa de um agregado (ex.: `ApiKey` e `PaymentGateway`, criados dentro do fluxo de `SubscribeToPlanUseCase`) entram na subpasta do agregado que as orquestra, mesmo sem levar o nome dele — não viram uma terceira subpasta "genérica". Cruzar submódulos do mesmo módulo é permitido via import direto (ex.: `SubscribeToPlanUseCase` importa `application.plan.FindPlanByIdUseCase`) — a regra de "nunca outro módulo" vale entre módulos (`billing` → `project`), não entre submódulos do mesmo módulo.
+
 ---
 
 ## O que cada módulo faz
@@ -42,22 +44,25 @@ billing ────────────────────────
     └── salva Subscription + ApiKey
   Quem tem plano ativo ganha uma ApiKey para usar o sistema
 
-project ─────────────────────────────────────────────────
-  POST /projects → CreateProjectUseCase
+project ─────────────────────────────────────────────────  ← não implementado nesta entrega
+  POST /projects → CreateProjectUseCase (planejado)
     ├── ProjectBuilder monta Project + Roles + Routes
     └── PlanLimitValidator garante que não passa do limite do plano
-  Define o que pode ser acessado e por quem (Roles/Routes)
+  Define o que pode ser acessado e por quem (Roles/Routes) —
+  fora de escopo por falta de tempo, ver docs/PLAN.md
 
-permission ──────────────────────────────────────────────  ← núcleo
+permission ──────────────────────────────────────────────  ← núcleo, implementado
   POST /validate-permission → ValidatePermissionUseCase
-    └── Chain: ApiKeyHandler → TokenHandler → RoleRouteHandler
-  É a razão de existir do SaaS: valida se uma requisição
-  tem permissão para acessar uma rota de um projeto
+    └── Chain: ApiKeyValidationHandler → TokenValidationHandler → RoleRouteValidationHandler
+  Valida a ApiKey de verdade (chama billing via use case). Os dois
+  últimos handlers sempre concedem porque dependem de project
+  (Role/Route) e de um 2º fator de auth, nenhum implementado ainda —
+  decisão documentada, ver docs/PATTERNS.md
 
-audit ───────────────────────────────────────────────────
-  Ouve o evento disparado pelo módulo permission
-  AuditLogListener → salva AuditLog no banco
-  Ninguém chama o audit diretamente — ele reage a eventos
+audit ───────────────────────────────────────────────────  ← não implementado nesta entrega
+  Ouviria o evento disparado pelo módulo permission
+  AuditLogListener → salva AuditLog no banco (planejado)
+  Fora de escopo por falta de tempo, ver docs/PLAN.md
 ```
 
 ---
@@ -65,20 +70,21 @@ audit ────────────────────────�
 ## Como os módulos se conectam
 
 ```
-identity ──→ billing ──→ project ──→ permission
-                                          │
-                                       (evento)
-                                          ↓
-                                        audit
+identity ──→ billing ──→ permission
+                            │
+                         (evento, planejado)
+                            ↓
+                          audit
+
+project (planejado, não integrado nesta entrega)
 ```
 
-### Fluxo de negócio completo
+### Fluxo de negócio completo (implementado nesta entrega)
 
 1. Cliente se cadastra (`identity`)
 2. Assina um plano e recebe uma ApiKey (`billing`)
-3. Cria um projeto com cargos e rotas dentro do limite do plano (`project`)
-4. Qualquer sistema externo chama `POST /validate-permission` com a ApiKey + rota + cargo (`permission`)
-5. O resultado (permitido/negado) é gravado automaticamente em log (`audit`)
+3. Qualquer sistema externo chama `POST /validate-permission` com a ApiKey + cargo + rota (`permission`) — a ApiKey é validada de verdade contra `billing`; cargo/rota são aceitos pelo contrato mas ainda não checados contra um projeto real, porque `project` não existe nesta entrega (ver `docs/PLAN.md`)
+4. ~~Cria um projeto com cargos e rotas dentro do limite do plano~~ e ~~o resultado é gravado em log de auditoria~~ — ambos fora de escopo por falta de tempo, ver "trabalho futuro" em `docs/PLAN.md`
 
 ---
 
@@ -88,8 +94,8 @@ Um módulo **nunca** acessa o repositório JPA de outro módulo diretamente. A c
 
 | Forma                      | Quando usar                                               | Exemplo                                                                     |
 | -------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Chamada direta de use case | Quando um módulo precisa de dados de outro               | `CreateProjectUseCase` consulta o billing para checar os limites do plano |
-| Evento de domínio         | Quando um efeito colateral deve acontecer sem acoplamento | `permission` dispara `PermissionValidated`; `audit` escuta e age      |
+| Chamada direta de use case | Quando um módulo precisa de dados de outro               | `permission/infrastructure/BillingApiKeyValidator` chama `billing.application.subscription.FindApiKeyByPlainKeyUseCase` para validar a ApiKey (implementado); `CreateProjectUseCase` consultaria o billing para checar os limites do plano (planejado) |
+| Evento de domínio         | Quando um efeito colateral deve acontecer sem acoplamento | `permission` dispararia `PermissionValidated`; `audit` escutaria e agiria (planejado, não implementado nesta entrega) |
 
 ---
 
@@ -132,6 +138,18 @@ infrastructure/
 
 Trocar o banco de dados exige apenas um novo adapter — o use case não muda.
 
+**Mesma regra vale para comunicação entre módulos, não só para JPA:** `permission/domain/ApiKeyValidator` é uma porta que `permission` define para si mesmo; quem a implementa é `permission/infrastructure/BillingApiKeyValidator`, que por dentro chama o use case `billing.application.subscription.FindApiKeyByPlainKeyUseCase`. Isso mantém `permission/domain` sem importar nada de `billing` — só `permission/infrastructure` conhece a existência do outro módulo, exatamente como só `infrastructure` conhece o JPA.
+
+---
+
+## ADR-001: quem gera o ID da entidade — domínio ou Hibernate
+
+**Decisão:** métodos de fábrica no domínio (`Subscription.pendingFor()`, etc.) **não** atribuem `id` manualmente quando a entidade JPA correspondente usa `@GeneratedValue(strategy = GenerationType.UUID)`. O `id` fica `null` até o primeiro `save()`; o adapter lê o valor gerado de volta (`toDomain(saved)`) e o use case reatribui a variável (`subscription = subscriptionRepository.save(subscription)`).
+
+**Por quê:** o Spring Data `SimpleJpaRepository.save()` decide entre `persist()` e `merge()` checando se o `id` está `null` (`isNew()`). Se o domínio já atribui um UUID antes do primeiro save, o repositório assume que a entidade **já existe** e chama `merge()` — que faz um `SELECT` pra achar a linha, não encontra (ela ainda não existe) e o Hibernate lança `StaleObjectStateException` (`ObjectOptimisticLockingFailureException`), mesmo sem `@Version` na entidade. Foi exatamente o bug corrigido em `SubscribeToPlanUseCase`/`Subscription.pendingFor()` — `Client` e `ApiKey` nunca tiveram esse problema porque já seguiam essa regra.
+
+**Como aplicar:** qualquer entidade nova com `@GeneratedValue(strategy = GenerationType.UUID)` (ex: futuras entidades de `project`, `permission`, `audit`) deve deixar o Hibernate gerar o `id` — nunca pré-atribuir no domínio. Se um fluxo salvar a mesma entidade mais de uma vez na mesma transação (como a subscription: pending → paid/rejected → active), sempre reatribuir a variável local ao retorno de `save()`.
+
 ---
 
 ## Estrutura de pacotes
@@ -152,27 +170,46 @@ src/main/java/com/saas/permissions/
 │       ├── dto/           # RegisterClientRequest.java, ClientResponse.java
 │       └── mapper/        # RegisterClientMapper.java, ClientResponseMapper.java
 │
-├── billing/
-│   ├── domain/            # Plan.java, Subscription.java, ApiKey.java,
-│   │                      # PaymentGateway.java (porta)
-│   ├── application/       # SubscribeToPlanUseCase.java
-│   ├── infrastructure/    # FakePaymentGatewayAdapter.java, ApiKeyFactory.java
-│   └── api/               # SubscriptionController.java
+├── billing/               # dividido em submódulos plan/ e subscription/ dentro de cada camada
+│   ├── domain/
+│   │   ├── plan/          # Plan.java, PlanRepository.java (porta)
+│   │   └── subscription/  # Subscription.java, ApiKey.java, PaymentGateway.java (porta)
+│   │       └── dto/       # PaymentRequest.java, PaymentResult.java, SubscriptionResult.java
+│   ├── application/
+│   │   ├── plan/          # FindPlanByIdUseCase.java
+│   │   └── subscription/  # SubscribeToPlanUseCase.java
+│   │       └── command/   # SubscribeToPlanCommand.java
+│   ├── infrastructure/
+│   │   ├── plan/          # PlanJpaEntity.java, PlanJpaRepository.java, PlanRepositoryAdapter.java
+│   │   └── subscription/  # FakePaymentGatewayAdapter.java, ApiKeyFactory.java, BillingConfig.java, ...
+│   └── api/
+│       ├── plan/          # PlanController.java
+│       │   ├── dto/       # PlanResponse.java
+│       │   └── mapper/    # PlanResponseMapper.java
+│       └── subscription/  # SubscriptionController.java
+│           ├── dto/       # SubscribeToPlanRequest.java, SubscriptionResponse.java
+│           └── mapper/    # SubscribeToPlanMapper.java, SubscriptionResponseMapper.java
 │
-├── project/
+├── project/               # planejado, não implementado nesta entrega — ver docs/PLAN.md
 │   ├── domain/            # Project.java, Role.java, Route.java,
 │   │                      # ProjectBuilder.java, PlanLimitValidator.java
 │   ├── application/       # CreateProjectUseCase.java
 │   └── api/               # ProjectController.java
 │
-├── permission/
-│   ├── domain/            # PermissionValidationHandler.java (porta),
+├── permission/            # implementado — Chain of Responsibility (docs/PATTERNS.md)
+│   ├── domain/            # PermissionValidationHandler.java (Handler abstrato),
 │   │                      # ApiKeyValidationHandler, TokenValidationHandler,
-│   │                      # RoleRouteValidationHandler
+│   │                      # RoleRouteValidationHandler (ConcreteHandlers),
+│   │                      # ApiKeyValidator.java (porta), dto/PermissionCheckRequest.java,
+│   │                      # dto/PermissionCheckResult.java
 │   ├── application/       # ValidatePermissionUseCase.java
+│   ├── infrastructure/    # BillingApiKeyValidator.java (implementa ApiKeyValidator
+│   │                      # chamando billing.FindApiKeyByPlainKeyUseCase)
 │   └── api/               # PermissionController.java
+│       ├── dto/           # ValidatePermissionRequest.java, PermissionValidationResponse.java
+│       └── mapper/        # ValidatePermissionMapper.java, PermissionValidationResponseMapper.java
 │
-└── audit/
+└── audit/                 # planejado, não implementado nesta entrega — ver docs/PLAN.md
     ├── domain/            # AuditLog.java, PermissionEventListener.java (porta)
     ├── application/       # AuditLogListener.java
     └── infrastructure/    # JpaAuditLogRepository.java
