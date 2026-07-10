@@ -1,11 +1,11 @@
 
-package com.saas.permissions.billing.api.subscription.mapper;
+package com.saas.permissions.modules.billing.api.subscription.mapper;
 
 import org.springframework.stereotype.Component;
 
-import com.saas.permissions.billing.api.subscription.dto.SubscriptionResponse;
-import com.saas.permissions.billing.domain.subscription.Subscription;
-import com.saas.permissions.billing.domain.subscription.dto.SubscriptionResult;
+import com.saas.permissions.modules.billing.api.subscription.dto.SubscriptionResponse;
+import com.saas.permissions.modules.billing.domain.subscription.Subscription;
+import com.saas.permissions.modules.billing.domain.subscription.dto.SubscriptionResult;
 import com.saas.permissions.shared.domain.Mapper;
 
 @Component

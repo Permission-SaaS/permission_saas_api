@@ -1,4 +1,4 @@
-package com.saas.permissions.billing.api.plan.dto;
+package com.saas.permissions.modules.billing.api.plan.dto;
 
 import java.math.BigDecimal;
 import java.util.UUID;

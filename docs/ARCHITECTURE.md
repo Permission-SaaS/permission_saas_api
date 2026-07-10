@@ -157,60 +157,63 @@ Trocar o banco de dados exige apenas um novo adapter — o use case não muda.
 ```
 src/main/java/com/saas/permissions/
 ├── shared/
-│   ├── domain/            # Mapper<I,O> (interface genérica Strategy)
-│   └── infrastructure/    # SecurityConfig
+│   ├── domain/                # Mapper<I,O> (interface genérica Strategy)
+│   └── infrastructure/        # SecurityConfig
 │
-├── identity/
-│   ├── domain/            # Client.java, ClientStatus.java, AuthProvider.java,
-│   │                      # ClientRepository.java (porta)
-│   ├── application/       # RegisterClientUseCase.java
-│   │   └── command/       # RegisterClientCommand.java
-│   ├── infrastructure/    # ClientRepositoryAdapter.java, JpaClientRepository.java
-│   └── api/               # ClientController.java
-│       ├── dto/           # RegisterClientRequest.java, ClientResponse.java
-│       └── mapper/        # RegisterClientMapper.java, ClientResponseMapper.java
-│
-├── billing/               # dividido em submódulos plan/ e subscription/ dentro de cada camada
-│   ├── domain/
-│   │   ├── plan/          # Plan.java, PlanRepository.java (porta)
-│   │   └── subscription/  # Subscription.java, ApiKey.java, PaymentGateway.java (porta)
-│   │       └── dto/       # PaymentRequest.java, PaymentResult.java, SubscriptionResult.java
-│   ├── application/
-│   │   ├── plan/          # FindPlanByIdUseCase.java
-│   │   └── subscription/  # SubscribeToPlanUseCase.java
-│   │       └── command/   # SubscribeToPlanCommand.java
-│   ├── infrastructure/
-│   │   ├── plan/          # PlanJpaEntity.java, PlanJpaRepository.java, PlanRepositoryAdapter.java
-│   │   └── subscription/  # FakePaymentGatewayAdapter.java, ApiKeyFactory.java, BillingConfig.java, ...
-│   └── api/
-│       ├── plan/          # PlanController.java
-│       │   ├── dto/       # PlanResponse.java
-│       │   └── mapper/    # PlanResponseMapper.java
-│       └── subscription/  # SubscriptionController.java
-│           ├── dto/       # SubscribeToPlanRequest.java, SubscriptionResponse.java
-│           └── mapper/    # SubscribeToPlanMapper.java, SubscriptionResponseMapper.java
-│
-├── project/               # planejado, não implementado nesta entrega — ver docs/PLAN.md
-│   ├── domain/            # Project.java, Role.java, Route.java,
-│   │                      # ProjectBuilder.java, PlanLimitValidator.java
-│   ├── application/       # CreateProjectUseCase.java
-│   └── api/               # ProjectController.java
-│
-├── permission/            # implementado — Chain of Responsibility (docs/PATTERNS.md)
-│   ├── domain/            # PermissionValidationHandler.java (Handler abstrato),
-│   │                      # ApiKeyValidationHandler, TokenValidationHandler,
-│   │                      # RoleRouteValidationHandler (ConcreteHandlers),
-│   │                      # ApiKeyValidator.java (porta), dto/PermissionCheckRequest.java,
-│   │                      # dto/PermissionCheckResult.java
-│   ├── application/       # ValidatePermissionUseCase.java
-│   ├── infrastructure/    # BillingApiKeyValidator.java (implementa ApiKeyValidator
-│   │                      # chamando billing.FindApiKeyByPlainKeyUseCase)
-│   └── api/               # PermissionController.java
-│       ├── dto/           # ValidatePermissionRequest.java, PermissionValidationResponse.java
-│       └── mapper/        # ValidatePermissionMapper.java, PermissionValidationResponseMapper.java
-│
-└── audit/                 # planejado, não implementado nesta entrega — ver docs/PLAN.md
-    ├── domain/            # AuditLog.java, PermissionEventListener.java (porta)
-    ├── application/       # AuditLogListener.java
-    └── infrastructure/    # JpaAuditLogRepository.java
+└── modules/                    # todos os módulos de negócio ficam agrupados aqui
+    ├── identity/
+    │   ├── domain/            # Client.java, ClientStatus.java, AuthProvider.java,
+    │   │                      # ClientRepository.java (porta)
+    │   ├── application/       # RegisterClientUseCase.java
+    │   │   └── command/       # RegisterClientCommand.java
+    │   ├── infrastructure/    # ClientRepositoryAdapter.java, JpaClientRepository.java
+    │   └── api/               # ClientController.java
+    │       ├── dto/           # RegisterClientRequest.java, ClientResponse.java
+    │       └── mapper/        # RegisterClientMapper.java, ClientResponseMapper.java
+    │
+    ├── billing/               # dividido em submódulos plan/ e subscription/ dentro de cada camada
+    │   ├── domain/
+    │   │   ├── plan/          # Plan.java, PlanRepository.java (porta)
+    │   │   └── subscription/  # Subscription.java, ApiKey.java, PaymentGateway.java (porta)
+    │   │       └── dto/       # PaymentRequest.java, PaymentResult.java, SubscriptionResult.java
+    │   ├── application/
+    │   │   ├── plan/          # FindPlanByIdUseCase.java
+    │   │   └── subscription/  # SubscribeToPlanUseCase.java
+    │   │       └── command/   # SubscribeToPlanCommand.java
+    │   ├── infrastructure/
+    │   │   ├── plan/          # PlanJpaEntity.java, PlanJpaRepository.java, PlanRepositoryAdapter.java
+    │   │   └── subscription/  # FakePaymentGatewayAdapter.java, ApiKeyFactory.java, BillingConfig.java, ...
+    │   └── api/
+    │       ├── plan/          # PlanController.java
+    │       │   ├── dto/       # PlanResponse.java
+    │       │   └── mapper/    # PlanResponseMapper.java
+    │       └── subscription/  # SubscriptionController.java
+    │           ├── dto/       # SubscribeToPlanRequest.java, SubscriptionResponse.java
+    │           └── mapper/    # SubscribeToPlanMapper.java, SubscriptionResponseMapper.java
+    │
+    ├── project/               # planejado, não implementado nesta entrega — ver docs/PLAN.md
+    │   ├── domain/            # Project.java, Role.java, Route.java,
+    │   │                      # ProjectBuilder.java, PlanLimitValidator.java
+    │   ├── application/       # CreateProjectUseCase.java
+    │   └── api/               # ProjectController.java
+    │
+    ├── permission/            # implementado — Chain of Responsibility (docs/PATTERNS.md)
+    │   ├── domain/            # PermissionValidationHandler.java (Handler abstrato),
+    │   │                      # ApiKeyValidationHandler, TokenValidationHandler,
+    │   │                      # RoleRouteValidationHandler (ConcreteHandlers),
+    │   │                      # ApiKeyValidator.java (porta), dto/PermissionCheckRequest.java,
+    │   │                      # dto/PermissionCheckResult.java
+    │   ├── application/       # ValidatePermissionUseCase.java
+    │   ├── infrastructure/    # BillingApiKeyValidator.java (implementa ApiKeyValidator
+    │   │                      # chamando billing.FindApiKeyByPlainKeyUseCase)
+    │   └── api/               # PermissionController.java
+    │       ├── dto/           # ValidatePermissionRequest.java, PermissionValidationResponse.java
+    │       └── mapper/        # ValidatePermissionMapper.java, PermissionValidationResponseMapper.java
+    │
+    └── audit/                 # planejado, não implementado nesta entrega — ver docs/PLAN.md
+        ├── domain/            # AuditLog.java, PermissionEventListener.java (porta)
+        ├── application/       # AuditLogListener.java
+        └── infrastructure/    # JpaAuditLogRepository.java
 ```
+
+Todos os pacotes Java correspondentes usam o prefixo `com.saas.permissions.modules.<módulo>` (exceto `shared`, que permanece em `com.saas.permissions.shared`).

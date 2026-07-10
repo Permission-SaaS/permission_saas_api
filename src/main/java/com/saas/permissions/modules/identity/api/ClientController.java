@@ -1,12 +1,12 @@
-package com.saas.permissions.identity.api;
+package com.saas.permissions.modules.identity.api;
 
-import com.saas.permissions.identity.api.dto.ClientResponse;
-import com.saas.permissions.identity.api.dto.RegisterClientRequest;
-import com.saas.permissions.identity.api.mapper.ClientResponseMapper;
-import com.saas.permissions.identity.api.mapper.RegisterClientMapper;
-import com.saas.permissions.identity.application.FindAllClientsUseCase;
-import com.saas.permissions.identity.application.FindClientByIdUseCase;
-import com.saas.permissions.identity.application.RegisterClientUseCase;
+import com.saas.permissions.modules.identity.api.dto.ClientResponse;
+import com.saas.permissions.modules.identity.api.dto.RegisterClientRequest;
+import com.saas.permissions.modules.identity.api.mapper.ClientResponseMapper;
+import com.saas.permissions.modules.identity.api.mapper.RegisterClientMapper;
+import com.saas.permissions.modules.identity.application.FindAllClientsUseCase;
+import com.saas.permissions.modules.identity.application.FindClientByIdUseCase;
+import com.saas.permissions.modules.identity.application.RegisterClientUseCase;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 

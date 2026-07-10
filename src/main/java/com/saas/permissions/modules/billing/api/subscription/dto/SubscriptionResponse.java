@@ -1,4 +1,4 @@
-package com.saas.permissions.billing.api.subscription.dto;
+package com.saas.permissions.modules.billing.api.subscription.dto;
 
 import java.util.UUID;
 

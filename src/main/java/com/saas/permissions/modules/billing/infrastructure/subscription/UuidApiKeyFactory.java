@@ -1,11 +1,11 @@
-package com.saas.permissions.billing.infrastructure.subscription;
+package com.saas.permissions.modules.billing.infrastructure.subscription;
 
 import java.util.UUID;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
-import com.saas.permissions.billing.domain.subscription.ApiKey;
+import com.saas.permissions.modules.billing.domain.subscription.ApiKey;
 
 /**
  * ConcreteCreator: gera a chave em texto puro como um UUID prefixado. Único

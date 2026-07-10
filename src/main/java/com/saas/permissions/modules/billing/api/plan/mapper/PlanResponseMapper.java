@@ -1,9 +1,9 @@
-package com.saas.permissions.billing.api.plan.mapper;
+package com.saas.permissions.modules.billing.api.plan.mapper;
 
 import org.springframework.stereotype.Component;
 
-import com.saas.permissions.billing.api.plan.dto.PlanResponse;
-import com.saas.permissions.billing.domain.plan.Plan;
+import com.saas.permissions.modules.billing.api.plan.dto.PlanResponse;
+import com.saas.permissions.modules.billing.domain.plan.Plan;
 import com.saas.permissions.shared.domain.Mapper;
 
 @Component

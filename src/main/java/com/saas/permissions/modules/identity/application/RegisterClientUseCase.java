@@ -1,9 +1,9 @@
-package com.saas.permissions.identity.application;
+package com.saas.permissions.modules.identity.application;
 
-import com.saas.permissions.identity.application.command.RegisterClientCommand;
-import com.saas.permissions.identity.domain.AuthProvider;
-import com.saas.permissions.identity.domain.Client;
-import com.saas.permissions.identity.domain.ClientRepository;
+import com.saas.permissions.modules.identity.application.command.RegisterClientCommand;
+import com.saas.permissions.modules.identity.domain.AuthProvider;
+import com.saas.permissions.modules.identity.domain.Client;
+import com.saas.permissions.modules.identity.domain.ClientRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;

@@ -1,10 +1,10 @@
-package com.saas.permissions.identity.infrastructure;
+package com.saas.permissions.modules.identity.infrastructure;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-import com.saas.permissions.identity.domain.AuthProvider;
-import com.saas.permissions.identity.domain.ClientStatus;
+import com.saas.permissions.modules.identity.domain.AuthProvider;
+import com.saas.permissions.modules.identity.domain.ClientStatus;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

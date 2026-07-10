@@ -1,6 +1,6 @@
-package com.saas.permissions.identity.api.dto;
+package com.saas.permissions.modules.identity.api.dto;
 
-import com.saas.permissions.identity.domain.AuthProvider;
+import com.saas.permissions.modules.identity.domain.AuthProvider;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 

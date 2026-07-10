@@ -1,6 +1,6 @@
-package com.saas.permissions.identity.application.command;
+package com.saas.permissions.modules.identity.application.command;
 
-import com.saas.permissions.identity.domain.AuthProvider;
+import com.saas.permissions.modules.identity.domain.AuthProvider;
 
 public record RegisterClientCommand(
                 String name,

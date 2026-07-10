@@ -1,4 +1,4 @@
-package com.saas.permissions.billing.api.plan;
+package com.saas.permissions.modules.billing.api.plan;
 
 import java.util.List;
 import java.util.UUID;
@@ -13,13 +13,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
 
-import com.saas.permissions.billing.api.plan.dto.PlanResponse;
-import com.saas.permissions.billing.api.plan.dto.RegisterPlanRequest;
-import com.saas.permissions.billing.api.plan.mapper.PlanResponseMapper;
-import com.saas.permissions.billing.api.plan.mapper.RegisterPlanMapper;
-import com.saas.permissions.billing.application.plan.FindAllPlansUseCase;
-import com.saas.permissions.billing.application.plan.FindPlanByIdUseCase;
-import com.saas.permissions.billing.application.plan.RegisterPlanUseCase;
+import com.saas.permissions.modules.billing.api.plan.dto.PlanResponse;
+import com.saas.permissions.modules.billing.api.plan.dto.RegisterPlanRequest;
+import com.saas.permissions.modules.billing.api.plan.mapper.PlanResponseMapper;
+import com.saas.permissions.modules.billing.api.plan.mapper.RegisterPlanMapper;
+import com.saas.permissions.modules.billing.application.plan.FindAllPlansUseCase;
+import com.saas.permissions.modules.billing.application.plan.FindPlanByIdUseCase;
+import com.saas.permissions.modules.billing.application.plan.RegisterPlanUseCase;
 
 import lombok.RequiredArgsConstructor;
 

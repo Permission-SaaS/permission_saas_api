@@ -1,4 +1,4 @@
-package com.saas.permissions.billing.domain.plan;
+package com.saas.permissions.modules.billing.domain.plan;
 
 import java.util.List;
 import java.util.Optional;

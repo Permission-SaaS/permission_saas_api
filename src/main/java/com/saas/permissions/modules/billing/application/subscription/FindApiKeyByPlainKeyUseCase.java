@@ -1,12 +1,12 @@
-package com.saas.permissions.billing.application.subscription;
+package com.saas.permissions.modules.billing.application.subscription;
 
 import java.util.Optional;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import com.saas.permissions.billing.domain.subscription.ApiKey;
-import com.saas.permissions.billing.domain.subscription.ApiKeyRepository;
+import com.saas.permissions.modules.billing.domain.subscription.ApiKey;
+import com.saas.permissions.modules.billing.domain.subscription.ApiKeyRepository;
 
 import lombok.RequiredArgsConstructor;
 

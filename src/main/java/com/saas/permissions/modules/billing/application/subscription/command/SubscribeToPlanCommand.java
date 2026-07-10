@@ -1,4 +1,4 @@
-package com.saas.permissions.billing.application.subscription.command;
+package com.saas.permissions.modules.billing.application.subscription.command;
 
 import java.util.UUID;
 

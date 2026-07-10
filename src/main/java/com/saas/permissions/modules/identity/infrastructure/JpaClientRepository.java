@@ -1,4 +1,4 @@
-package com.saas.permissions.identity.infrastructure;
+package com.saas.permissions.modules.identity.infrastructure;
 
 import java.util.UUID;
 

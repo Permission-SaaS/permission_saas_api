@@ -1,4 +1,4 @@
-package com.saas.permissions.identity.domain;
+package com.saas.permissions.modules.identity.domain;
 
 import java.util.List;
 import java.util.Optional;

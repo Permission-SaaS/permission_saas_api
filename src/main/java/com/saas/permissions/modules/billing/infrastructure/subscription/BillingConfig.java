@@ -1,4 +1,4 @@
-package com.saas.permissions.billing.infrastructure.subscription;
+package com.saas.permissions.modules.billing.infrastructure.subscription;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

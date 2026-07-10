@@ -1,4 +1,4 @@
-package com.saas.permissions.billing.domain.subscription;
+package com.saas.permissions.modules.billing.domain.subscription;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;

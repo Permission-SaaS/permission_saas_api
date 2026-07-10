@@ -1,10 +1,10 @@
-package com.saas.permissions.identity.infrastructure;
+package com.saas.permissions.modules.identity.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.saas.permissions.identity.domain.AuthProvider;
-import com.saas.permissions.identity.domain.Client;
-import com.saas.permissions.identity.domain.ClientRepository;
+import com.saas.permissions.modules.identity.domain.AuthProvider;
+import com.saas.permissions.modules.identity.domain.Client;
+import com.saas.permissions.modules.identity.domain.ClientRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

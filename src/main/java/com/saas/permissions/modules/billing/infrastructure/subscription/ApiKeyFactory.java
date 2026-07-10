@@ -1,11 +1,11 @@
-package com.saas.permissions.billing.infrastructure.subscription;
+package com.saas.permissions.modules.billing.infrastructure.subscription;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import com.saas.permissions.billing.domain.subscription.ApiKey;
+import com.saas.permissions.modules.billing.domain.subscription.ApiKey;
 
 /**
  * Creator do Factory Method. Fixa o que toda ApiKey precisa ter antes de ser

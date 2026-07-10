@@ -1,4 +1,4 @@
-package com.saas.permissions.identity.application;
+package com.saas.permissions.modules.identity.application;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -12,10 +12,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import com.saas.permissions.identity.application.command.RegisterClientCommand;
-import com.saas.permissions.identity.domain.AuthProvider;
-import com.saas.permissions.identity.domain.Client;
-import com.saas.permissions.identity.domain.ClientRepository;
+import com.saas.permissions.modules.identity.application.command.RegisterClientCommand;
+import com.saas.permissions.modules.identity.domain.AuthProvider;
+import com.saas.permissions.modules.identity.domain.Client;
+import com.saas.permissions.modules.identity.domain.ClientRepository;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RegisterClientUseCaseTest")

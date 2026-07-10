@@ -1,4 +1,4 @@
-package com.saas.permissions.permission.domain;
+package com.saas.permissions.modules.permission.domain;
 
 /**
  * Porta consultada pelo {@link ApiKeyValidationHandler}. Mantém o domain de

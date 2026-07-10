@@ -1,4 +1,4 @@
-package com.saas.permissions.identity.infrastructure;
+package com.saas.permissions.modules.identity.infrastructure;
 
 import java.util.List;
 import java.util.Optional;
@@ -6,8 +6,8 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Repository;
 
-import com.saas.permissions.identity.domain.Client;
-import com.saas.permissions.identity.domain.ClientRepository;
+import com.saas.permissions.modules.identity.domain.Client;
+import com.saas.permissions.modules.identity.domain.ClientRepository;
 
 import lombok.RequiredArgsConstructor;
 

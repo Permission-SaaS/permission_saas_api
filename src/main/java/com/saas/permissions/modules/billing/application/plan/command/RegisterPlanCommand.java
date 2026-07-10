@@ -1,4 +1,4 @@
-package com.saas.permissions.billing.application.plan.command;
+package com.saas.permissions.modules.billing.application.plan.command;
 
 import java.math.BigDecimal;
 

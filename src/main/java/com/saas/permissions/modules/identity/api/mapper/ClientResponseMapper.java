@@ -1,7 +1,7 @@
-package com.saas.permissions.identity.api.mapper;
+package com.saas.permissions.modules.identity.api.mapper;
 
-import com.saas.permissions.identity.api.dto.ClientResponse;
-import com.saas.permissions.identity.domain.Client;
+import com.saas.permissions.modules.identity.api.dto.ClientResponse;
+import com.saas.permissions.modules.identity.domain.Client;
 import com.saas.permissions.shared.domain.Mapper;
 import org.springframework.stereotype.Component;
 

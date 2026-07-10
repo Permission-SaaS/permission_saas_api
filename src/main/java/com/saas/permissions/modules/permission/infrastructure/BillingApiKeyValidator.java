@@ -1,9 +1,9 @@
-package com.saas.permissions.permission.infrastructure;
+package com.saas.permissions.modules.permission.infrastructure;
 
 import org.springframework.stereotype.Component;
 
-import com.saas.permissions.billing.application.subscription.FindApiKeyByPlainKeyUseCase;
-import com.saas.permissions.permission.domain.ApiKeyValidator;
+import com.saas.permissions.modules.billing.application.subscription.FindApiKeyByPlainKeyUseCase;
+import com.saas.permissions.modules.permission.domain.ApiKeyValidator;
 
 import lombok.RequiredArgsConstructor;
 

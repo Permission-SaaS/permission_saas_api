@@ -1,12 +1,12 @@
-package com.saas.permissions.billing.application.plan;
+package com.saas.permissions.modules.billing.application.plan;
 
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 
-import com.saas.permissions.billing.domain.plan.Plan;
-import com.saas.permissions.billing.domain.plan.PlanRepository;
+import com.saas.permissions.modules.billing.domain.plan.Plan;
+import com.saas.permissions.modules.billing.domain.plan.PlanRepository;
 
 import lombok.RequiredArgsConstructor;
 

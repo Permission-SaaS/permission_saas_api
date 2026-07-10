@@ -1,4 +1,4 @@
-package com.saas.permissions.permission.domain.dto;
+package com.saas.permissions.modules.permission.domain.dto;
 
 public record PermissionCheckResult(boolean granted, String reason) {
 

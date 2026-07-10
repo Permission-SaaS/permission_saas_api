@@ -1,13 +1,13 @@
-package com.saas.permissions.billing.infrastructure.subscription;
+package com.saas.permissions.modules.billing.infrastructure.subscription;
 
 import java.math.BigDecimal;
 
 import org.springframework.stereotype.Component;
 
-import com.saas.permissions.billing.domain.subscription.PaymentGateway;
-import com.saas.permissions.billing.domain.subscription.dto.PaymentRequest;
-import com.saas.permissions.billing.domain.subscription.dto.PaymentResult;
-import com.saas.permissions.billing.infrastructure.subscription.ExternalPaymentGatewaySimulator.LegacyChargeResponse;
+import com.saas.permissions.modules.billing.domain.subscription.PaymentGateway;
+import com.saas.permissions.modules.billing.domain.subscription.dto.PaymentRequest;
+import com.saas.permissions.modules.billing.domain.subscription.dto.PaymentResult;
+import com.saas.permissions.modules.billing.infrastructure.subscription.ExternalPaymentGatewaySimulator.LegacyChargeResponse;
 
 import lombok.RequiredArgsConstructor;
 

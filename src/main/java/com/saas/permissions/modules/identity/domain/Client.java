@@ -1,4 +1,4 @@
-package com.saas.permissions.identity.domain;
+package com.saas.permissions.modules.identity.domain;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;

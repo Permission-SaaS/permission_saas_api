@@ -1,13 +1,13 @@
-package com.saas.permissions.billing.infrastructure.subscription;
+package com.saas.permissions.modules.billing.infrastructure.subscription;
 
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.stereotype.Repository;
 
-import com.saas.permissions.billing.domain.subscription.Subscription;
-import com.saas.permissions.billing.domain.subscription.SubscriptionRepository;
-import com.saas.permissions.billing.domain.subscription.SubscriptionStatus;
+import com.saas.permissions.modules.billing.domain.subscription.Subscription;
+import com.saas.permissions.modules.billing.domain.subscription.SubscriptionRepository;
+import com.saas.permissions.modules.billing.domain.subscription.SubscriptionStatus;
 
 import lombok.RequiredArgsConstructor;
 

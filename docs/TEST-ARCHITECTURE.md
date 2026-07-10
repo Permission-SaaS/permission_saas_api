@@ -46,34 +46,35 @@ Os testes espelham exatamente a estrutura do código principal. Para cada arquiv
 ```
 src/test/java/com/saas/permissions/
 │
-├── identity/
-│   ├── domain/
-│   │   └── ClientTest.java                    ← testa regras do entity
-│   ├── application/
-│   │   └── RegisterClientUseCaseTest.java     ← testa o use case (unit, com mock)
-│   ├── infrastructure/
-│   │   └── ClientRepositoryAdapterIT.java     ← testa o repositório (integration)
-│   └── api/
-│       └── ClientControllerTest.java          ← testa o controller HTTP (slice)
-│
-├── billing/
-│   ├── domain/
-│   ├── application/
-│   │   └── SubscribeToPlanUseCaseTest.java
-│   └── infrastructure/
-│       └── FakePaymentGatewayAdapterTest.java
-│
-├── project/
-│   └── application/
-│       └── CreateProjectUseCaseTest.java
-│
-├── permission/
-│   ├── domain/
-│   │   ├── ApiKeyValidationHandlerTest.java   ← testa cada elo da chain
-│   │   ├── TokenValidationHandlerTest.java
-│   │   └── RoleRouteValidationHandlerTest.java
-│   └── application/
-│       └── ValidatePermissionUseCaseTest.java
+├── modules/
+│   ├── identity/
+│   │   ├── domain/
+│   │   │   └── ClientTest.java                    ← testa regras do entity
+│   │   ├── application/
+│   │   │   └── RegisterClientUseCaseTest.java     ← testa o use case (unit, com mock)
+│   │   ├── infrastructure/
+│   │   │   └── ClientRepositoryAdapterIT.java     ← testa o repositório (integration)
+│   │   └── api/
+│   │       └── ClientControllerTest.java          ← testa o controller HTTP (slice)
+│   │
+│   ├── billing/
+│   │   ├── domain/
+│   │   ├── application/
+│   │   │   └── SubscribeToPlanUseCaseTest.java
+│   │   └── infrastructure/
+│   │       └── FakePaymentGatewayAdapterTest.java
+│   │
+│   ├── project/
+│   │   └── application/
+│   │       └── CreateProjectUseCaseTest.java
+│   │
+│   └── permission/
+│       ├── domain/
+│       │   ├── ApiKeyValidationHandlerTest.java   ← testa cada elo da chain
+│       │   ├── TokenValidationHandlerTest.java
+│       │   └── RoleRouteValidationHandlerTest.java
+│       └── application/
+│           └── ValidatePermissionUseCaseTest.java
 │
 └── PermissionSaasApplicationTests.java        ← smoke test geral (já existe)
 ```
@@ -123,13 +124,13 @@ spring:
 ### Exemplo: RegisterClientUseCaseTest
 
 ```java
-// src/test/java/com/saas/permissions/identity/application/RegisterClientUseCaseTest.java
-package com.saas.permissions.identity.application;
+// src/test/java/com/saas/permissions/modules/identity/application/RegisterClientUseCaseTest.java
+package com.saas.permissions.modules.identity.application;
 
-import com.saas.permissions.identity.application.command.RegisterClientCommand;
-import com.saas.permissions.identity.domain.AuthProvider;
-import com.saas.permissions.identity.domain.Client;
-import com.saas.permissions.identity.domain.ClientRepository;
+import com.saas.permissions.modules.identity.application.command.RegisterClientCommand;
+import com.saas.permissions.modules.identity.domain.AuthProvider;
+import com.saas.permissions.modules.identity.domain.Client;
+import com.saas.permissions.modules.identity.domain.ClientRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -242,8 +243,8 @@ Testa regras que vivem direto nas entidades ou value objects, sem mock algum.
 ### Exemplo: ClientTest
 
 ```java
-// src/test/java/com/saas/permissions/identity/domain/ClientTest.java
-package com.saas.permissions.identity.domain;
+// src/test/java/com/saas/permissions/modules/identity/domain/ClientTest.java
+package com.saas.permissions.modules.identity.domain;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -280,16 +281,16 @@ Testa se o endpoint HTTP faz a coisa certa: lê o body, converte para command, c
 ### Exemplo: ClientControllerTest
 
 ```java
-// src/test/java/com/saas/permissions/identity/api/ClientControllerTest.java
-package com.saas.permissions.identity.api;
+// src/test/java/com/saas/permissions/modules/identity/api/ClientControllerTest.java
+package com.saas.permissions.modules.identity.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.saas.permissions.identity.api.mapper.ClientResponseMapper;
-import com.saas.permissions.identity.api.mapper.RegisterClientMapper;
-import com.saas.permissions.identity.application.RegisterClientUseCase;
-import com.saas.permissions.identity.domain.AuthProvider;
-import com.saas.permissions.identity.domain.Client;
-import com.saas.permissions.identity.domain.ClientStatus;
+import com.saas.permissions.modules.identity.api.mapper.ClientResponseMapper;
+import com.saas.permissions.modules.identity.api.mapper.RegisterClientMapper;
+import com.saas.permissions.modules.identity.application.RegisterClientUseCase;
+import com.saas.permissions.modules.identity.domain.AuthProvider;
+import com.saas.permissions.modules.identity.domain.Client;
+import com.saas.permissions.modules.identity.domain.ClientStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -347,7 +348,7 @@ class ClientControllerTest {
         when(registerClientMapper.map(any())).thenReturn(null);     // mapper é testado à parte
         when(registerClientUseCase.execute(any())).thenReturn(savedClient);
         when(clientResponseMapper.map(any())).thenReturn(
-            new com.saas.permissions.identity.api.dto.ClientResponse(
+            new com.saas.permissions.modules.identity.api.dto.ClientResponse(
                 savedClient.getId(), "Ana Silva", "ana@email.com", ClientStatus.active
             )
         );
@@ -381,12 +382,12 @@ Testa se o adapter JPA está mapeando corretamente os dados para o banco.
 **Ferramenta:** `@DataJpaTest` — sobe apenas o contexto JPA com H2 em memória.
 
 ```java
-// src/test/java/com/saas/permissions/identity/infrastructure/ClientRepositoryAdapterIT.java
-package com.saas.permissions.identity.infrastructure;
+// src/test/java/com/saas/permissions/modules/identity/infrastructure/ClientRepositoryAdapterIT.java
+package com.saas.permissions.modules.identity.infrastructure;
 
-import com.saas.permissions.identity.domain.AuthProvider;
-import com.saas.permissions.identity.domain.Client;
-import com.saas.permissions.identity.domain.ClientRepository;
+import com.saas.permissions.modules.identity.domain.AuthProvider;
+import com.saas.permissions.modules.identity.domain.Client;
+import com.saas.permissions.modules.identity.domain.ClientRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -447,8 +448,8 @@ class ClientRepositoryAdapterIT {
 O padrão Chain of Responsibility tem elos independentes — cada elo pode e deve ser testado sozinho.
 
 ```java
-// src/test/java/com/saas/permissions/permission/domain/ApiKeyValidationHandlerTest.java
-package com.saas.permissions.permission.domain;
+// src/test/java/com/saas/permissions/modules/permission/domain/ApiKeyValidationHandlerTest.java
+package com.saas.permissions.modules.permission.domain;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

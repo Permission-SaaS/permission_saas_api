@@ -1,9 +1,9 @@
-package com.saas.permissions.permission.domain;
+package com.saas.permissions.modules.permission.domain;
 
 import org.springframework.stereotype.Component;
 
-import com.saas.permissions.permission.domain.dto.PermissionCheckRequest;
-import com.saas.permissions.permission.domain.dto.PermissionCheckResult;
+import com.saas.permissions.modules.permission.domain.dto.PermissionCheckRequest;
+import com.saas.permissions.modules.permission.domain.dto.PermissionCheckResult;
 
 import lombok.RequiredArgsConstructor;
 

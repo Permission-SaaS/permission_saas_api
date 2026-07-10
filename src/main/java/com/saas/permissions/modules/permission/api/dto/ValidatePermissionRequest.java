@@ -1,4 +1,4 @@
-package com.saas.permissions.permission.api.dto;
+package com.saas.permissions.modules.permission.api.dto;
 
 import jakarta.validation.constraints.NotBlank;
 

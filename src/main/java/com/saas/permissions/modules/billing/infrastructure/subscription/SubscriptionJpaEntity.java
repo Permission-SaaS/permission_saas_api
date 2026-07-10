@@ -1,9 +1,9 @@
-package com.saas.permissions.billing.infrastructure.subscription;
+package com.saas.permissions.modules.billing.infrastructure.subscription;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-import com.saas.permissions.billing.domain.subscription.SubscriptionStatus;
+import com.saas.permissions.modules.billing.domain.subscription.SubscriptionStatus;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

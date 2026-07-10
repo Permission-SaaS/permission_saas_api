@@ -1,7 +1,7 @@
-package com.saas.permissions.billing.domain.subscription;
+package com.saas.permissions.modules.billing.domain.subscription;
 
-import com.saas.permissions.billing.domain.subscription.dto.PaymentRequest;
-import com.saas.permissions.billing.domain.subscription.dto.PaymentResult;
+import com.saas.permissions.modules.billing.domain.subscription.dto.PaymentRequest;
+import com.saas.permissions.modules.billing.domain.subscription.dto.PaymentResult;
 
 /**
  * Target do padrão Adapter (GoF). É a porta que o

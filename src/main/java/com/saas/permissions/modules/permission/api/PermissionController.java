@@ -1,15 +1,15 @@
-package com.saas.permissions.permission.api;
+package com.saas.permissions.modules.permission.api;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.saas.permissions.permission.api.dto.PermissionValidationResponse;
-import com.saas.permissions.permission.api.dto.ValidatePermissionRequest;
-import com.saas.permissions.permission.api.mapper.PermissionValidationResponseMapper;
-import com.saas.permissions.permission.api.mapper.ValidatePermissionMapper;
-import com.saas.permissions.permission.application.ValidatePermissionUseCase;
+import com.saas.permissions.modules.permission.api.dto.PermissionValidationResponse;
+import com.saas.permissions.modules.permission.api.dto.ValidatePermissionRequest;
+import com.saas.permissions.modules.permission.api.mapper.PermissionValidationResponseMapper;
+import com.saas.permissions.modules.permission.api.mapper.ValidatePermissionMapper;
+import com.saas.permissions.modules.permission.application.ValidatePermissionUseCase;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

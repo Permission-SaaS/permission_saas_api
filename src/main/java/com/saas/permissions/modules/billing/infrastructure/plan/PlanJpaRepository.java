@@ -1,4 +1,4 @@
-package com.saas.permissions.billing.infrastructure.plan;
+package com.saas.permissions.modules.billing.infrastructure.plan;
 
 import java.util.Optional;
 import java.util.UUID;

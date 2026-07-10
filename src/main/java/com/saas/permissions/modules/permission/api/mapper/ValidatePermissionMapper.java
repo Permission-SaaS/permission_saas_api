@@ -1,9 +1,9 @@
-package com.saas.permissions.permission.api.mapper;
+package com.saas.permissions.modules.permission.api.mapper;
 
 import org.springframework.stereotype.Component;
 
-import com.saas.permissions.permission.api.dto.ValidatePermissionRequest;
-import com.saas.permissions.permission.domain.dto.PermissionCheckRequest;
+import com.saas.permissions.modules.permission.api.dto.ValidatePermissionRequest;
+import com.saas.permissions.modules.permission.domain.dto.PermissionCheckRequest;
 import com.saas.permissions.shared.domain.Mapper;
 
 @Component

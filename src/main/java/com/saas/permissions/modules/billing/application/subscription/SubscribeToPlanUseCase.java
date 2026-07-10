@@ -1,4 +1,4 @@
-package com.saas.permissions.billing.application.subscription;
+package com.saas.permissions.modules.billing.application.subscription;
 
 import java.time.OffsetDateTime;
 import java.util.Optional;
@@ -7,21 +7,21 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.saas.permissions.billing.application.subscription.command.SubscribeToPlanCommand;
-import com.saas.permissions.billing.domain.subscription.ApiKey;
-import com.saas.permissions.billing.domain.subscription.ApiKeyRepository;
-import com.saas.permissions.billing.domain.subscription.PaymentGateway;
-import com.saas.permissions.billing.domain.plan.Plan;
-import com.saas.permissions.billing.domain.subscription.Subscription;
-import com.saas.permissions.billing.domain.subscription.SubscriptionRepository;
-import com.saas.permissions.billing.domain.subscription.SubscriptionStatus;
-import com.saas.permissions.billing.domain.subscription.dto.PaymentRequest;
-import com.saas.permissions.billing.domain.subscription.dto.PaymentResult;
-import com.saas.permissions.billing.domain.subscription.dto.SubscriptionResult;
-import com.saas.permissions.billing.infrastructure.subscription.ApiKeyFactory;
-import com.saas.permissions.billing.application.plan.FindPlanByIdUseCase;
-import com.saas.permissions.identity.application.FindClientByIdUseCase;
-import com.saas.permissions.identity.domain.Client;
+import com.saas.permissions.modules.billing.application.subscription.command.SubscribeToPlanCommand;
+import com.saas.permissions.modules.billing.domain.subscription.ApiKey;
+import com.saas.permissions.modules.billing.domain.subscription.ApiKeyRepository;
+import com.saas.permissions.modules.billing.domain.subscription.PaymentGateway;
+import com.saas.permissions.modules.billing.domain.plan.Plan;
+import com.saas.permissions.modules.billing.domain.subscription.Subscription;
+import com.saas.permissions.modules.billing.domain.subscription.SubscriptionRepository;
+import com.saas.permissions.modules.billing.domain.subscription.SubscriptionStatus;
+import com.saas.permissions.modules.billing.domain.subscription.dto.PaymentRequest;
+import com.saas.permissions.modules.billing.domain.subscription.dto.PaymentResult;
+import com.saas.permissions.modules.billing.domain.subscription.dto.SubscriptionResult;
+import com.saas.permissions.modules.billing.infrastructure.subscription.ApiKeyFactory;
+import com.saas.permissions.modules.billing.application.plan.FindPlanByIdUseCase;
+import com.saas.permissions.modules.identity.application.FindClientByIdUseCase;
+import com.saas.permissions.modules.identity.domain.Client;
 
 import lombok.RequiredArgsConstructor;
 
