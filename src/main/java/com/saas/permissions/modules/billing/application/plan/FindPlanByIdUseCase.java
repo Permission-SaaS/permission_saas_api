@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import com.saas.permissions.modules.billing.domain.plan.Plan;
 import com.saas.permissions.modules.billing.domain.plan.PlanRepository;
+import com.saas.permissions.modules.billing.domain.plan.exception.PlanNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 
@@ -19,7 +20,7 @@ public class FindPlanByIdUseCase {
         Optional<Plan> foundPlan = planRepository.findById(planId);
 
         if (foundPlan.isEmpty()) {
-            throw new RuntimeException("Plan not found");
+            throw new PlanNotFoundException();
         }
 
         return foundPlan.get();

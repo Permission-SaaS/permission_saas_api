@@ -2,6 +2,28 @@
 
 Cada endpoint implementado: método, path, request/response e um exemplo de `curl`. Endpoints ainda não implementados (`project`, `audit`) não aparecem aqui — ver `CLAUDE.md` e `docs/PLAN.md` para o que falta.
 
+## Formato padrão de erro
+
+Todo erro (em qualquer endpoint) é tratado por `shared/api/GlobalExceptionHandler` e devolvido no mesmo formato (`ErrorResponse`):
+
+```json
+{
+  "status": 404,
+  "error": "Not Found",
+  "message": "Client not found",
+  "timestamp": "2026-07-10T12:00:00Z"
+}
+```
+
+| Situação | Status |
+|---|---|
+| Recurso não encontrado por id — categoria `ResourceNotFoundException`, lançada como `ClientNotFoundException`/`PlanNotFoundException` | `404 Not Found` |
+| Regra de negócio violada — categoria `BusinessRuleException`, lançada como `EmailAlreadyInUseException`/`PaymentDeclinedException`/`ActiveSubscriptionExistsException` | `409 Conflict` |
+| Falha de validação `@Valid` no request DTO | `400 Bad Request` |
+| Qualquer erro não mapeado | `500 Internal Server Error` |
+
+Ver `docs/ARCHITECTURE.md` → "Tratamento de exceções" para detalhes de implementação.
+
 ---
 
 ## `identity`
@@ -44,7 +66,7 @@ Cadastra um novo `Client`.
 }
 ```
 
-**Erros:** `400` se `email` já estiver em uso (`existsByEmail`).
+**Erros:** `409 Conflict` se `email` já estiver em uso (`existsByEmail` → `EmailAlreadyInUseException`).
 
 ```bash
 curl -X POST http://localhost:8080/clients/register \
@@ -72,7 +94,7 @@ curl http://localhost:8080/clients
 
 Busca um `Client` pelo id.
 
-**Response** `200 OK` (`ClientResponse`, mesmo formato acima). **Erros:** exceção se `clientId` não existir (`FindClientByIdUseCase`).
+**Response** `200 OK` (`ClientResponse`, mesmo formato acima). **Erros:** `404 Not Found` se `clientId` não existir (`FindClientByIdUseCase` → `ClientNotFoundException`).
 
 ```bash
 curl http://localhost:8080/clients/8f14e45f-ceea-4c72-8a13-000000000000
@@ -98,7 +120,7 @@ Busca um `Plan` pelo id.
 }
 ```
 
-**Erros:** lança exceção se `planId` não existir (`FindPlanByIdUseCase`).
+**Erros:** `404 Not Found` se `planId` não existir (`FindPlanByIdUseCase` → `PlanNotFoundException`).
 
 ```bash
 curl http://localhost:8080/plans/3f2504e0-4f89-11d3-9a0c-000000000000
@@ -131,7 +153,7 @@ Assina um `Plan` para um `Client` já cadastrado. Cobra via `PaymentGateway` (si
 
 **Importante:** `apiKey` só aparece em texto puro nesta resposta. Depois disso só o hash (`keyHash`) é persistido — não há endpoint para recuperar a chave em claro novamente.
 
-**Erros:** `404`/exceção se `clientId` ou `planId` não existirem (`FindClientByIdUseCase`, `FindPlanByIdUseCase`); pagamento recusado marca a `Subscription` como `canceled` e lança exceção (sem gerar `ApiKey`); exceção se o `Client` já possuir uma `Subscription` `active` (dentro do prazo) para o **mesmo** `planId` (`"Client already has an active subscription to this plan..."`).
+**Erros:** `404 Not Found` se `clientId` ou `planId` não existirem (`FindClientByIdUseCase` → `ClientNotFoundException`, `FindPlanByIdUseCase` → `PlanNotFoundException`); `409 Conflict` se o pagamento for recusado — marca a `Subscription` como `canceled`/rejeitada e lança `PaymentDeclinedException` (sem gerar `ApiKey`); `409 Conflict` se o `Client` já possuir uma `Subscription` `active` (dentro do prazo) para o **mesmo** `planId` (`ActiveSubscriptionExistsException`, mensagem `"Client already has an active subscription to this plan..."`).
 
 **Troca de plano:** se o `Client` já possuir uma `Subscription` `active` para um plano **diferente**, ela é automaticamente marcada `canceled` (e sua `ApiKey` revogada) antes de ativar a nova — ver invariante em `docs/DOMAIN.md`.
 

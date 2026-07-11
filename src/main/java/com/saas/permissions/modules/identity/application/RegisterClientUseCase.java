@@ -4,6 +4,8 @@ import com.saas.permissions.modules.identity.application.command.RegisterClientC
 import com.saas.permissions.modules.identity.domain.AuthProvider;
 import com.saas.permissions.modules.identity.domain.Client;
 import com.saas.permissions.modules.identity.domain.ClientRepository;
+import com.saas.permissions.modules.identity.domain.exception.EmailAlreadyInUseException;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,7 +20,7 @@ public class RegisterClientUseCase {
     public Client execute(RegisterClientCommand command) {
 
         if (clientRepository.existsByEmail(command.email())) {
-            throw new IllegalStateException("Email already in use: " + command.email());
+            throw new EmailAlreadyInUseException(command.email());
         }
 
         String passwordHash = (command.rawPassword() != null)

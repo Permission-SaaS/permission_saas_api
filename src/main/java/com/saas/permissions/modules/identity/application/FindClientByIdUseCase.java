@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import com.saas.permissions.modules.identity.domain.Client;
 import com.saas.permissions.modules.identity.domain.ClientRepository;
+import com.saas.permissions.modules.identity.domain.exception.ClientNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 
@@ -20,7 +21,7 @@ public class FindClientByIdUseCase {
         Optional<Client> foundClient = clientRepository.findById(clientId);
 
         if (foundClient.isEmpty()) {
-            throw new RuntimeException("Client not found");
+            throw new ClientNotFoundException();
         }
 
         return foundClient.get();

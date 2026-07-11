@@ -20,6 +20,8 @@ import com.saas.permissions.modules.billing.domain.subscription.dto.PaymentResul
 import com.saas.permissions.modules.billing.domain.subscription.dto.SubscriptionResult;
 import com.saas.permissions.modules.billing.infrastructure.subscription.ApiKeyFactory;
 import com.saas.permissions.modules.billing.application.plan.FindPlanByIdUseCase;
+import com.saas.permissions.modules.billing.domain.subscription.exception.ActiveSubscriptionExistsException;
+import com.saas.permissions.modules.billing.domain.subscription.exception.PaymentDeclinedException;
 import com.saas.permissions.modules.identity.application.FindClientByIdUseCase;
 import com.saas.permissions.modules.identity.domain.Client;
 
@@ -56,7 +58,7 @@ public class SubscribeToPlanUseCase {
         if (!paymentResult.approved()) {
             subscription.reject();
             subscriptionRepository.save(subscription);
-            throw new RuntimeException("Payment declined for subscription " + subscription.getId());
+            throw new PaymentDeclinedException(subscription.getId());
         }
 
         subscription.activate(OffsetDateTime.now(), OffsetDateTime.now().plusMonths(1));
@@ -76,8 +78,7 @@ public class SubscribeToPlanUseCase {
         }
 
         if (existing.getPlanId().equals(newPlanId)) {
-            throw new RuntimeException(
-                    "Client already has an active subscription to this plan, valid until " + existing.getExpiresAt());
+            throw new ActiveSubscriptionExistsException(existing.getExpiresAt());
         }
 
         existing.reject();

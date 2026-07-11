@@ -142,6 +142,43 @@ Trocar o banco de dados exige apenas um novo adapter — o use case não muda.
 
 ---
 
+## Tratamento de exceções — GlobalExceptionHandler
+
+Duas camadas de tipos, para conciliar "handler genérico por categoria HTTP" com "exceção legível e concentrada por módulo":
+
+1. **Categorias abstratas em `shared/domain/exception/`** — mapeiam 1:1 para um status HTTP. Nenhuma delas é instanciada diretamente (construtor `protected`), só estendida:
+   - `DomainException` — superclasse abstrata de tudo.
+   - `ResourceNotFoundException extends DomainException` → `404`.
+   - `BusinessRuleException extends DomainException` → `409`.
+2. **Exceções concretas por módulo**, uma para cada erro de negócio real do sistema, cada uma já carregando sua própria mensagem — quem lança nunca monta uma `String` na hora do `throw`:
+
+   | Exceção | Módulo/pacote | Extends | Uso |
+   |---|---|---|---|
+   | `ClientNotFoundException` | `identity/domain/exception/` | `ResourceNotFoundException` | `FindClientByIdUseCase` |
+   | `EmailAlreadyInUseException` | `identity/domain/exception/` | `BusinessRuleException` | `RegisterClientUseCase` — recebe o email no construtor e monta a mensagem internamente |
+   | `PlanNotFoundException` | `billing/domain/plan/exception/` | `ResourceNotFoundException` | `FindPlanByIdUseCase` |
+   | `PaymentDeclinedException` | `billing/domain/subscription/exception/` | `BusinessRuleException` | `SubscribeToPlanUseCase` — recebe o `subscriptionId` |
+   | `ActiveSubscriptionExistsException` | `billing/domain/subscription/exception/` | `BusinessRuleException` | `SubscribeToPlanUseCase.handleExistingSubscription` — recebe o `expiresAt` |
+
+   Exemplo: `throw new ClientNotFoundException();` em vez de `throw new ResourceNotFoundException("Client not found")` — a mensagem some do call site porque já é responsabilidade da própria exceção. Quando há dado relevante para a mensagem (email, id, data), ele entra como parâmetro do construtor (ex.: `new EmailAlreadyInUseException(command.email())`) — nunca a mensagem pronta.
+
+`shared/api/GlobalExceptionHandler` (`@RestControllerAdvice`) continua enxergando só as categorias abstratas — não precisa conhecer `ClientNotFoundException` nem qualquer outra folha, porque toda folha herda de uma das duas categorias:
+
+- `ResourceNotFoundException` (e qualquer subclasse) → `404 Not Found`
+- `BusinessRuleException` (e qualquer subclasse) → `409 Conflict`
+- `MethodArgumentNotValidException` (falha de `@Valid` nos DTOs de request) → `400 Bad Request`, mensagem concatena `campo: motivo` de cada erro de validação
+- Qualquer outra `Exception` não mapeada → `500 Internal Server Error`, logada via `@Slf4j` (nunca vaza stacktrace pro cliente)
+
+Formato de resposta único: `shared/api/dto/ErrorResponse` (`status`, `error`, `message`, `timestamp`).
+
+**Por que duas camadas:** se cada módulo lançasse `BusinessRuleException("texto solto")` diretamente, o texto ficaria espalhado pelos use cases e duplicado sempre que o mesmo erro fosse lançado de dois lugares. Concentrar cada exceção concreta no módulo do domínio que ela descreve (seguindo a mesma regra de ouro de `ARCHITECTURE.md` — `domain` não conhece HTTP) deixa o `throw` autoexplicativo e a mensagem con­sistente em um único lugar; a categoria abstrata em `shared` é só o que o `GlobalExceptionHandler` precisa para decidir o status HTTP, sem precisar de um `@ExceptionHandler` por exceção concreta.
+
+**Como estender:**
+- Novo erro dentro de uma categoria já existente (404 ou 409) → criar uma nova classe em `<módulo>/domain/[<agregado>/]exception/` estendendo `ResourceNotFoundException` ou `BusinessRuleException`; o `GlobalExceptionHandler` não muda.
+- Nova categoria de status HTTP → criar uma nova subclasse abstrata de `DomainException` em `shared/domain/exception/` e um `@ExceptionHandler` correspondente no `GlobalExceptionHandler`.
+
+---
+
 ## ADR-001: quem gera o ID da entidade — domínio ou Hibernate
 
 **Decisão:** métodos de fábrica no domínio (`Subscription.pendingFor()`, etc.) **não** atribuem `id` manualmente quando a entidade JPA correspondente usa `@GeneratedValue(strategy = GenerationType.UUID)`. O `id` fica `null` até o primeiro `save()`; o adapter lê o valor gerado de volta (`toDomain(saved)`) e o use case reatribui a variável (`subscription = subscriptionRepository.save(subscription)`).
@@ -157,13 +194,19 @@ Trocar o banco de dados exige apenas um novo adapter — o use case não muda.
 ```
 src/main/java/com/saas/permissions/
 ├── shared/
-│   ├── domain/                # Mapper<I,O> (interface genérica Strategy)
-│   └── infrastructure/        # SecurityConfig
+│   ├── domain/
+│   │   ├── Mapper.java         # interface genérica Strategy
+│   │   └── exception/          # DomainException (abstrata), ResourceNotFoundException (abstrata, 404),
+│   │                          # BusinessRuleException (abstrata, 409) — só categorias, nunca lançadas direto
+│   ├── infrastructure/        # SecurityConfig
+│   └── api/                   # PingController, GlobalExceptionHandler (@RestControllerAdvice)
+│       └── dto/                # ErrorResponse.java
 │
 └── modules/                    # todos os módulos de negócio ficam agrupados aqui
     ├── identity/
     │   ├── domain/            # Client.java, ClientStatus.java, AuthProvider.java,
     │   │                      # ClientRepository.java (porta)
+    │   │   └── exception/     # ClientNotFoundException, EmailAlreadyInUseException
     │   ├── application/       # RegisterClientUseCase.java
     │   │   └── command/       # RegisterClientCommand.java
     │   ├── infrastructure/    # ClientRepositoryAdapter.java, JpaClientRepository.java
@@ -174,8 +217,10 @@ src/main/java/com/saas/permissions/
     ├── billing/               # dividido em submódulos plan/ e subscription/ dentro de cada camada
     │   ├── domain/
     │   │   ├── plan/          # Plan.java, PlanRepository.java (porta)
+    │   │   │   └── exception/ # PlanNotFoundException.java
     │   │   └── subscription/  # Subscription.java, ApiKey.java, PaymentGateway.java (porta)
-    │   │       └── dto/       # PaymentRequest.java, PaymentResult.java, SubscriptionResult.java
+    │   │       ├── dto/       # PaymentRequest.java, PaymentResult.java, SubscriptionResult.java
+    │   │       └── exception/ # PaymentDeclinedException.java, ActiveSubscriptionExistsException.java
     │   ├── application/
     │   │   ├── plan/          # FindPlanByIdUseCase.java
     │   │   └── subscription/  # SubscribeToPlanUseCase.java
