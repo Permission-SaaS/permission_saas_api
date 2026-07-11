@@ -202,63 +202,62 @@ src/main/java/com/saas/permissions/
 │   └── api/                   # PingController, GlobalExceptionHandler (@RestControllerAdvice)
 │       └── dto/                # ErrorResponse.java
 │
-└── modules/                    # todos os módulos de negócio ficam agrupados aqui
-    ├── identity/
-    │   ├── domain/            # Client.java, ClientStatus.java, AuthProvider.java,
-    │   │                      # ClientRepository.java (porta)
-    │   │   └── exception/     # ClientNotFoundException, EmailAlreadyInUseException
-    │   ├── application/       # RegisterClientUseCase.java
-    │   │   └── command/       # RegisterClientCommand.java
-    │   ├── infrastructure/    # ClientRepositoryAdapter.java, JpaClientRepository.java
-    │   └── api/               # ClientController.java
-    │       ├── dto/           # RegisterClientRequest.java, ClientResponse.java
-    │       └── mapper/        # RegisterClientMapper.java, ClientResponseMapper.java
-    │
-    ├── billing/               # dividido em submódulos plan/ e subscription/ dentro de cada camada
-    │   ├── domain/
-    │   │   ├── plan/          # Plan.java, PlanRepository.java (porta)
-    │   │   │   └── exception/ # PlanNotFoundException.java
-    │   │   └── subscription/  # Subscription.java, ApiKey.java, PaymentGateway.java (porta)
-    │   │       ├── dto/       # PaymentRequest.java, PaymentResult.java, SubscriptionResult.java
-    │   │       └── exception/ # PaymentDeclinedException.java, ActiveSubscriptionExistsException.java
-    │   ├── application/
-    │   │   ├── plan/          # FindPlanByIdUseCase.java
-    │   │   └── subscription/  # SubscribeToPlanUseCase.java
-    │   │       └── command/   # SubscribeToPlanCommand.java
-    │   ├── infrastructure/
-    │   │   ├── plan/          # PlanJpaEntity.java, PlanJpaRepository.java, PlanRepositoryAdapter.java
-    │   │   └── subscription/  # FakePaymentGatewayAdapter.java, ApiKeyFactory.java, BillingConfig.java, ...
-    │   └── api/
-    │       ├── plan/          # PlanController.java
-    │       │   ├── dto/       # PlanResponse.java
-    │       │   └── mapper/    # PlanResponseMapper.java
-    │       └── subscription/  # SubscriptionController.java
-    │           ├── dto/       # SubscribeToPlanRequest.java, SubscriptionResponse.java
-    │           └── mapper/    # SubscribeToPlanMapper.java, SubscriptionResponseMapper.java
-    │
-    ├── project/               # planejado, não implementado nesta entrega — ver docs/PLAN.md
-    │   ├── domain/            # Project.java, Role.java, Route.java,
-    │   │                      # ProjectBuilder.java, PlanLimitValidator.java
-    │   ├── application/       # CreateProjectUseCase.java
-    │   └── api/               # ProjectController.java
-    │
-    ├── permission/            # implementado — Chain of Responsibility (docs/PATTERNS.md)
-    │   ├── domain/            # PermissionValidationHandler.java (Handler abstrato),
-    │   │                      # ApiKeyValidationHandler, TokenValidationHandler,
-    │   │                      # RoleRouteValidationHandler (ConcreteHandlers),
-    │   │                      # ApiKeyValidator.java (porta), dto/PermissionCheckRequest.java,
-    │   │                      # dto/PermissionCheckResult.java
-    │   ├── application/       # ValidatePermissionUseCase.java
-    │   ├── infrastructure/    # BillingApiKeyValidator.java (implementa ApiKeyValidator
-    │   │                      # chamando billing.FindApiKeyByPlainKeyUseCase)
-    │   └── api/               # PermissionController.java
-    │       ├── dto/           # ValidatePermissionRequest.java, PermissionValidationResponse.java
-    │       └── mapper/        # ValidatePermissionMapper.java, PermissionValidationResponseMapper.java
-    │
-    └── audit/                 # planejado, não implementado nesta entrega — ver docs/PLAN.md
-        ├── domain/            # AuditLog.java, PermissionEventListener.java (porta)
-        ├── application/       # AuditLogListener.java
-        └── infrastructure/    # JpaAuditLogRepository.java
+├── identity/
+│   ├── domain/            # Client.java, ClientStatus.java, AuthProvider.java,
+│   │                      # ClientRepository.java (porta)
+│   │   └── exception/     # ClientNotFoundException, EmailAlreadyInUseException
+│   ├── application/       # RegisterClientUseCase.java
+│   │   └── command/       # RegisterClientCommand.java
+│   ├── infrastructure/    # ClientRepositoryAdapter.java, JpaClientRepository.java
+│   └── api/               # ClientController.java
+│       ├── dto/           # RegisterClientRequest.java, ClientResponse.java
+│       └── mapper/        # RegisterClientMapper.java, ClientResponseMapper.java
+│
+├── billing/               # dividido em submódulos plan/ e subscription/ dentro de cada camada
+│   ├── domain/
+│   │   ├── plan/          # Plan.java, PlanRepository.java (porta)
+│   │   │   └── exception/ # PlanNotFoundException.java
+│   │   └── subscription/  # Subscription.java, ApiKey.java, PaymentGateway.java (porta)
+│   │       ├── dto/       # PaymentRequest.java, PaymentResult.java, SubscriptionResult.java
+│   │       └── exception/ # PaymentDeclinedException.java, ActiveSubscriptionExistsException.java
+│   ├── application/
+│   │   ├── plan/          # FindPlanByIdUseCase.java
+│   │   └── subscription/  # SubscribeToPlanUseCase.java
+│   │       └── command/   # SubscribeToPlanCommand.java
+│   ├── infrastructure/
+│   │   ├── plan/          # PlanJpaEntity.java, PlanJpaRepository.java, PlanRepositoryAdapter.java
+│   │   └── subscription/  # FakePaymentGatewayAdapter.java, ApiKeyFactory.java, BillingConfig.java, ...
+│   └── api/
+│       ├── plan/          # PlanController.java
+│       │   ├── dto/       # PlanResponse.java
+│       │   └── mapper/    # PlanResponseMapper.java
+│       └── subscription/  # SubscriptionController.java
+│           ├── dto/       # SubscribeToPlanRequest.java, SubscriptionResponse.java
+│           └── mapper/    # SubscribeToPlanMapper.java, SubscriptionResponseMapper.java
+│
+├── project/               # planejado, não implementado nesta entrega — ver docs/PLAN.md
+│   ├── domain/            # Project.java, Role.java, Route.java,
+│   │                      # ProjectBuilder.java, PlanLimitValidator.java
+│   ├── application/       # CreateProjectUseCase.java
+│   └── api/               # ProjectController.java
+│
+├── permission/            # implementado — Chain of Responsibility (docs/PATTERNS.md)
+│   ├── domain/            # PermissionValidationHandler.java (Handler abstrato),
+│   │                      # ApiKeyValidationHandler, TokenValidationHandler,
+│   │                      # RoleRouteValidationHandler (ConcreteHandlers),
+│   │                      # ApiKeyValidator.java (porta), dto/PermissionCheckRequest.java,
+│   │                      # dto/PermissionCheckResult.java
+│   ├── application/       # ValidatePermissionUseCase.java
+│   ├── infrastructure/    # BillingApiKeyValidator.java (implementa ApiKeyValidator
+│   │                      # chamando billing.FindApiKeyByPlainKeyUseCase)
+│   └── api/               # PermissionController.java
+│       ├── dto/           # ValidatePermissionRequest.java, PermissionValidationResponse.java
+│       └── mapper/        # ValidatePermissionMapper.java, PermissionValidationResponseMapper.java
+│
+└── audit/                 # planejado, não implementado nesta entrega — ver docs/PLAN.md
+    ├── domain/            # AuditLog.java, PermissionEventListener.java (porta)
+    ├── application/       # AuditLogListener.java
+    └── infrastructure/    # JpaAuditLogRepository.java
 ```
 
-Todos os pacotes Java correspondentes usam o prefixo `com.saas.permissions.modules.<módulo>` (exceto `shared`, que permanece em `com.saas.permissions.shared`).
+Todos os módulos de negócio são subpacotes diretos de `com.saas.permissions` (ex: `com.saas.permissions.identity`), assim como `shared`. Essa é a estrutura exigida pela detecção automática de módulos do Spring Modulith, que considera cada subpacote direto do pacote da classe `@SpringBootApplication` como um Application Module.
