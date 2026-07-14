@@ -189,6 +189,16 @@ Formato de resposta único: `shared/api/dto/ErrorResponse` (`status`, `error`, `
 
 ---
 
+## Segurança do Swagger UI
+
+`SecurityConfig` deixa todo o restante da API com `permitAll()` (autenticação real de cliente é trabalho futuro, ver `docs/PLAN.md`), mas `/swagger-ui/**` e `/v3/api-docs/**` exigem HTTP Basic com um usuário fixo em memória (`InMemoryUserDetailsManager`), configurado via `app.swagger.username` / `app.swagger.password` (env vars `SWAGGER_USERNAME` / `SWAGGER_PASSWORD`, default `admin` / `admin123`). `/actuator/**` continua liberado.
+
+**Por quê:** a documentação interativa expõe todos os endpoints e facilita descoberta/abuso se ficar pública; como login/JWT de cliente está fora de escopo desta entrega, HTTP Basic com um usuário fixo é a menor solução que já impede acesso não autenticado ao Swagger sem implementar um fluxo de autenticação completo.
+
+O grupo `public` do `SwaggerConfig` (`GroupedOpenApi`) é só rotulagem de agrupamento do OpenAPI — não tem relação com controle de acesso, que é feito inteiramente pelo `SecurityFilterChain`.
+
+---
+
 ## Estrutura de pacotes
 
 ```

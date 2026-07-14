@@ -35,6 +35,9 @@ app:
   jwt:
     secret: ${JWT_SECRET}
     expiration-ms: 3600000
+  swagger:
+    username: ${SWAGGER_USERNAME:admin}
+    password: ${SWAGGER_PASSWORD:admin123}
     
 server:
   port: 8080
@@ -46,3 +49,6 @@ management:
     web:
       exposure:
         include: health,info
+
+springdoc:
+  show-actuator: true
