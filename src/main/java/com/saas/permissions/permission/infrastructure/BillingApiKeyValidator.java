@@ -2,7 +2,7 @@ package com.saas.permissions.permission.infrastructure;
 
 import org.springframework.stereotype.Component;
 
-import com.saas.permissions.billing.application.subscription.FindApiKeyByPlainKeyUseCase;
+import com.saas.permissions.billing.application.subscription.FindActiveApiKeyByPlainKeyUseCase;
 import com.saas.permissions.permission.domain.ApiKeyValidator;
 
 import lombok.RequiredArgsConstructor;
@@ -16,12 +16,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class BillingApiKeyValidator implements ApiKeyValidator {
 
-    private final FindApiKeyByPlainKeyUseCase findApiKeyByPlainKeyUseCase;
+    private final FindActiveApiKeyByPlainKeyUseCase findActiveApiKeyByPlainKeyUseCase;
 
     @Override
     public boolean isActive(String apiKey) {
-        return findApiKeyByPlainKeyUseCase.execute(apiKey)
-                .map(foundApiKey -> foundApiKey.isActive())
-                .orElse(false);
+        return findActiveApiKeyByPlainKeyUseCase.execute(apiKey).isPresent();
     }
 }

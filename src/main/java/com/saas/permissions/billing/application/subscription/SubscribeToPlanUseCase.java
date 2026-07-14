@@ -23,7 +23,6 @@ import com.saas.permissions.billing.application.plan.FindPlanByIdUseCase;
 import com.saas.permissions.billing.domain.subscription.exception.ActiveSubscriptionExistsException;
 import com.saas.permissions.billing.domain.subscription.exception.PaymentDeclinedException;
 import com.saas.permissions.identity.application.FindClientByIdUseCase;
-import com.saas.permissions.identity.domain.Client;
 
 import lombok.RequiredArgsConstructor;
 
@@ -39,17 +38,18 @@ public class SubscribeToPlanUseCase {
 
     @Transactional
     public SubscriptionResult execute(SubscribeToPlanCommand command) {
-        Client foundClient = findClientByIdUseCase.execute(command.clientId());
+        findClientByIdUseCase.execute(command.clientId());
+
         Plan foundPlan = findPlanByIdUseCase.execute(command.planId());
 
         Optional<Subscription> existingSubscription = subscriptionRepository
-                .findByClientIdAndStatus(foundClient.getId(), SubscriptionStatus.active);
+                .findByClientIdAndStatus(command.clientId(), SubscriptionStatus.active);
 
         if (existingSubscription.isPresent()) {
             handleExistingSubscription(existingSubscription.get(), foundPlan.getId());
         }
 
-        Subscription subscription = Subscription.pendingFor(foundClient.getId(), foundPlan.getId());
+        Subscription subscription = Subscription.pendingFor(command.clientId(), foundPlan.getId());
         subscription = subscriptionRepository.save(subscription);
 
         PaymentResult paymentResult = paymentGateway.process(

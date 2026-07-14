@@ -12,7 +12,7 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-public class FindApiKeyByPlainKeyUseCase {
+public class FindActiveApiKeyByPlainKeyUseCase {
 
     private final ApiKeyRepository apiKeyRepository;
     private final PasswordEncoder passwordEncoder;

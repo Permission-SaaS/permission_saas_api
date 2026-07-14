@@ -94,7 +94,7 @@ Um módulo **nunca** acessa o repositório JPA de outro módulo diretamente. A c
 
 | Forma                      | Quando usar                                               | Exemplo                                                                     |
 | -------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Chamada direta de use case | Quando um módulo precisa de dados de outro               | `permission/infrastructure/BillingApiKeyValidator` chama `billing.application.subscription.FindApiKeyByPlainKeyUseCase` para validar a ApiKey (implementado); `CreateProjectUseCase` consultaria o billing para checar os limites do plano (planejado) |
+| Chamada direta de use case | Quando um módulo precisa de dados de outro               | `permission/infrastructure/BillingApiKeyValidator` chama `billing.application.subscription.FindActiveApiKeyByPlainKeyUseCase` para validar a ApiKey (implementado); `CreateProjectUseCase` consultaria o billing para checar os limites do plano (planejado) |
 | Evento de domínio         | Quando um efeito colateral deve acontecer sem acoplamento | `permission` dispararia `PermissionValidated`; `audit` escutaria e agiria (planejado, não implementado nesta entrega) |
 
 ---
@@ -138,7 +138,7 @@ infrastructure/
 
 Trocar o banco de dados exige apenas um novo adapter — o use case não muda.
 
-**Mesma regra vale para comunicação entre módulos, não só para JPA:** `permission/domain/ApiKeyValidator` é uma porta que `permission` define para si mesmo; quem a implementa é `permission/infrastructure/BillingApiKeyValidator`, que por dentro chama o use case `billing.application.subscription.FindApiKeyByPlainKeyUseCase`. Isso mantém `permission/domain` sem importar nada de `billing` — só `permission/infrastructure` conhece a existência do outro módulo, exatamente como só `infrastructure` conhece o JPA.
+**Mesma regra vale para comunicação entre módulos, não só para JPA:** `permission/domain/ApiKeyValidator` é uma porta que `permission` define para si mesmo; quem a implementa é `permission/infrastructure/BillingApiKeyValidator`, que por dentro chama o use case `billing.application.subscription.FindActiveApiKeyByPlainKeyUseCase`. Isso mantém `permission/domain` sem importar nada de `billing` — só `permission/infrastructure` conhece a existência do outro módulo, exatamente como só `infrastructure` conhece o JPA.
 
 ---
 
@@ -249,7 +249,7 @@ src/main/java/com/saas/permissions/
 │   │                      # dto/PermissionCheckResult.java
 │   ├── application/       # ValidatePermissionUseCase.java
 │   ├── infrastructure/    # BillingApiKeyValidator.java (implementa ApiKeyValidator
-│   │                      # chamando billing.FindApiKeyByPlainKeyUseCase)
+│   │                      # chamando billing.FindActiveApiKeyByPlainKeyUseCase)
 │   └── api/               # PermissionController.java
 │       ├── dto/           # ValidatePermissionRequest.java, PermissionValidationResponse.java
 │       └── mapper/        # ValidatePermissionMapper.java, PermissionValidationResponseMapper.java
