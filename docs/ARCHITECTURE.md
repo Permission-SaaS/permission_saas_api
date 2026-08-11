@@ -49,7 +49,7 @@ project ────────────────────────
     ├── ProjectBuilder monta Project + Roles + Routes
     └── PlanLimitValidator garante que não passa do limite do plano
   Define o que pode ser acessado e por quem (Roles/Routes) —
-  fora de escopo por falta de tempo, ver docs/PLAN.md
+  fora de escopo por falta de tempo, ver docs/clean_code_e_padroes_de_projeto/PLAN.md
 
 permission ──────────────────────────────────────────────  ← núcleo, implementado
   POST /validate-permission → ValidatePermissionUseCase
@@ -62,7 +62,7 @@ permission ───────────────────────
 audit ───────────────────────────────────────────────────  ← não implementado nesta entrega
   Ouviria o evento disparado pelo módulo permission
   AuditLogListener → salva AuditLog no banco (planejado)
-  Fora de escopo por falta de tempo, ver docs/PLAN.md
+  Fora de escopo por falta de tempo, ver docs/clean_code_e_padroes_de_projeto/PLAN.md
 ```
 
 ---
@@ -83,8 +83,8 @@ project (planejado, não integrado nesta entrega)
 
 1. Cliente se cadastra (`identity`)
 2. Assina um plano e recebe uma ApiKey (`billing`)
-3. Qualquer sistema externo chama `POST /validate-permission` com a ApiKey + cargo + rota (`permission`) — a ApiKey é validada de verdade contra `billing`; cargo/rota são aceitos pelo contrato mas ainda não checados contra um projeto real, porque `project` não existe nesta entrega (ver `docs/PLAN.md`)
-4. ~~Cria um projeto com cargos e rotas dentro do limite do plano~~ e ~~o resultado é gravado em log de auditoria~~ — ambos fora de escopo por falta de tempo, ver "trabalho futuro" em `docs/PLAN.md`
+3. Qualquer sistema externo chama `POST /validate-permission` com a ApiKey + cargo + rota (`permission`) — a ApiKey é validada de verdade contra `billing`; cargo/rota são aceitos pelo contrato mas ainda não checados contra um projeto real, porque `project` não existe nesta entrega (ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`)
+4. ~~Cria um projeto com cargos e rotas dentro do limite do plano~~ e ~~o resultado é gravado em log de auditoria~~ — ambos fora de escopo por falta de tempo, ver "trabalho futuro" em `docs/clean_code_e_padroes_de_projeto/PLAN.md`
 
 ---
 
@@ -191,7 +191,7 @@ Formato de resposta único: `shared/api/dto/ErrorResponse` (`status`, `error`, `
 
 ## Segurança do Swagger UI
 
-`SecurityConfig` deixa todo o restante da API com `permitAll()` (autenticação real de cliente é trabalho futuro, ver `docs/PLAN.md`), mas `/swagger-ui/**` e `/v3/api-docs/**` exigem HTTP Basic com um usuário fixo em memória (`InMemoryUserDetailsManager`), configurado via `app.swagger.username` / `app.swagger.password` (env vars `SWAGGER_USERNAME` / `SWAGGER_PASSWORD`, default `admin` / `admin123`). `/actuator/**` continua liberado.
+`SecurityConfig` deixa todo o restante da API com `permitAll()` (autenticação real de cliente é trabalho futuro, ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`), mas `/swagger-ui/**` e `/v3/api-docs/**` exigem HTTP Basic com um usuário fixo em memória (`InMemoryUserDetailsManager`), configurado via `app.swagger.username` / `app.swagger.password` (env vars `SWAGGER_USERNAME` / `SWAGGER_PASSWORD`, default `admin` / `admin123`). `/actuator/**` continua liberado.
 
 **Por quê:** a documentação interativa expõe todos os endpoints e facilita descoberta/abuso se ficar pública; como login/JWT de cliente está fora de escopo desta entrega, HTTP Basic com um usuário fixo é a menor solução que já impede acesso não autenticado ao Swagger sem implementar um fluxo de autenticação completo.
 
@@ -245,7 +245,7 @@ src/main/java/com/saas/permissions/
 │           ├── dto/       # SubscribeToPlanRequest.java, SubscriptionResponse.java
 │           └── mapper/    # SubscribeToPlanMapper.java, SubscriptionResponseMapper.java
 │
-├── project/               # planejado, não implementado nesta entrega — ver docs/PLAN.md
+├── project/               # planejado, não implementado nesta entrega — ver docs/clean_code_e_padroes_de_projeto/PLAN.md
 │   ├── domain/            # Project.java, Role.java, Route.java,
 │   │                      # ProjectBuilder.java, PlanLimitValidator.java
 │   ├── application/       # CreateProjectUseCase.java
@@ -264,7 +264,7 @@ src/main/java/com/saas/permissions/
 │       ├── dto/           # ValidatePermissionRequest.java, PermissionValidationResponse.java
 │       └── mapper/        # ValidatePermissionMapper.java, PermissionValidationResponseMapper.java
 │
-└── audit/                 # planejado, não implementado nesta entrega — ver docs/PLAN.md
+└── audit/                 # planejado, não implementado nesta entrega — ver docs/clean_code_e_padroes_de_projeto/PLAN.md
     ├── domain/            # AuditLog.java, PermissionEventListener.java (porta)
     ├── application/       # AuditLogListener.java
     └── infrastructure/    # JpaAuditLogRepository.java

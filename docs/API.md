@@ -1,6 +1,6 @@
 # API — Permission SaaS
 
-Cada endpoint implementado: método, path, request/response e um exemplo de `curl`. Endpoints ainda não implementados (`project`, `audit`) não aparecem aqui — ver `CLAUDE.md` e `docs/PLAN.md` para o que falta.
+Cada endpoint implementado: método, path, request/response e um exemplo de `curl`. Endpoints ainda não implementados (`project`, `audit`) não aparecem aqui — ver `CLAUDE.md` e `docs/clean_code_e_padroes_de_projeto/PLAN.md` para o que falta.
 
 ## Formato padrão de erro
 
@@ -188,7 +188,7 @@ Valida se uma ApiKey pode acessar uma `route` com um `role`. Roda a `Chain of Re
 }
 ```
 
-**Importante:** só `ApiKeyValidationHandler` checa uma regra real hoje (a ApiKey precisa existir e estar `active` em `billing`). `TokenValidationHandler` e `RoleRouteValidationHandler` sempre concedem nesta entrega — dependem do módulo `project` (Role/Route) e de um 2º fator de autenticação, nenhum implementado por falta de tempo (ver `docs/PLAN.md`, "trabalho futuro"). Uma ApiKey inválida ou revogada é negada antes de chegar aos outros handlers:
+**Importante:** só `ApiKeyValidationHandler` checa uma regra real hoje (a ApiKey precisa existir e estar `active` em `billing`). `TokenValidationHandler` e `RoleRouteValidationHandler` sempre concedem nesta entrega — dependem do módulo `project` (Role/Route) e de um 2º fator de autenticação, nenhum implementado por falta de tempo (ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`, "trabalho futuro"). Uma ApiKey inválida ou revogada é negada antes de chegar aos outros handlers:
 ```json
 {
   "granted": false,

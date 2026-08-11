@@ -9,7 +9,7 @@ import com.saas.permissions.permission.domain.dto.PermissionCheckResult;
  * Deveria checar se {@link PermissionCheckRequest#role()} tem acesso à
  * {@link PermissionCheckRequest#route()} de um Project. Sempre concede porque
  * o módulo {@code project} (Role/Route/ProjectBuilder) ainda não foi
- * implementado por falta de tempo — ver docs/PLAN.md, "trabalho futuro". A
+ * implementado por falta de tempo — ver docs/clean_code_e_padroes_de_projeto/PLAN.md, "trabalho futuro". A
  * regra real entraria aqui sem tocar nos outros handlers da chain (OCP).
  */
 @Component

@@ -98,7 +98,7 @@ Value object de saída da chain (`permission/domain/dto`). Carrega `granted` (bo
 
 **Invariante:** a chain para no primeiro handler que devolver `granted = false` — os handlers seguintes nunca são chamados (ver `docs/PATTERNS.md`, Chain of Responsibility).
 
-**Limitação conhecida desta entrega:** `TokenValidationHandler` e `RoleRouteValidationHandler` sempre devolvem `allow()`, porque o módulo `project` (Role/Route) e um 2º fator de autenticação (Token) não foram implementados por falta de tempo — só `ApiKeyValidationHandler` aplica uma regra real hoje (a `ApiKey` precisa existir e estar `active`, consultando `billing`). Ver "trabalho futuro" em `docs/PLAN.md`.
+**Limitação conhecida desta entrega:** `TokenValidationHandler` e `RoleRouteValidationHandler` sempre devolvem `allow()`, porque o módulo `project` (Role/Route) e um 2º fator de autenticação (Token) não foram implementados por falta de tempo — só `ApiKeyValidationHandler` aplica uma regra real hoje (a `ApiKey` precisa existir e estar `active`, consultando `billing`). Ver "trabalho futuro" em `docs/clean_code_e_padroes_de_projeto/PLAN.md`.
 
 ---
 
