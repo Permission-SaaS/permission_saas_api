@@ -1,0 +1,26 @@
+# Seed de rotas — carregado por ProjectFileLoader
+#
+# Formato (separador ';'):
+#   id;projectId;name;httpMethod;path;description;isActive;createdAt
+#
+# projectId referencia a coluna 'id' de projects.txt — é o lado N do 1-N.
+# A unicidade é a combinacao httpMethod + path (ver docs/DOMAIN.md):
+# GET /produtos e POST /produtos sao rotas distintas e legitimas.
+#
+# Linhas iniciadas por '#' e linhas em branco são ignoradas.
+
+# --- Loja Virtual ---
+11111111-bbbb-bbbb-bbbb-000000000001;11111111-1111-1111-1111-111111111111;Listar produtos;GET;/produtos;Catalogo publico de produtos;true;2026-03-10T09:10:00-03:00
+11111111-bbbb-bbbb-bbbb-000000000002;11111111-1111-1111-1111-111111111111;Cadastrar produto;POST;/produtos;Inclusao de novo produto no catalogo;true;2026-03-10T09:11:00-03:00
+11111111-bbbb-bbbb-bbbb-000000000003;11111111-1111-1111-1111-111111111111;Remover produto;DELETE;/produtos/{id};Exclusao de produto do catalogo;true;2026-03-10T09:12:00-03:00
+11111111-bbbb-bbbb-bbbb-000000000004;11111111-1111-1111-1111-111111111111;Listar pedidos;GET;/pedidos;Pedidos realizados na loja;true;2026-03-12T16:40:00-03:00
+11111111-bbbb-bbbb-bbbb-000000000005;11111111-1111-1111-1111-111111111111;Catalogo legado;GET;/produtos/legado;Endpoint descontinuado, mantido para historico;false;2026-03-13T09:00:00-03:00
+
+# --- App de Entregas ---
+22222222-bbbb-bbbb-bbbb-000000000001;22222222-2222-2222-2222-222222222222;Listar entregas;GET;/entregas;Entregas visiveis para o usuario;true;2026-04-22T14:40:00-03:00
+22222222-bbbb-bbbb-bbbb-000000000002;22222222-2222-2222-2222-222222222222;Criar entrega;POST;/entregas;Abertura de uma nova entrega;true;2026-04-22T14:41:00-03:00
+22222222-bbbb-bbbb-bbbb-000000000003;22222222-2222-2222-2222-222222222222;Atualizar status;PATCH;/entregas/{id}/status;Mudanca de status pelo entregador;true;2026-04-23T10:05:00-03:00
+
+# --- Portal Interno ---
+33333333-bbbb-bbbb-bbbb-000000000001;33333333-3333-3333-3333-333333333333;Listar funcionarios;GET;/funcionarios;Quadro de funcionarios ativos;true;2026-05-05T08:30:00-03:00
+33333333-bbbb-bbbb-bbbb-000000000002;33333333-3333-3333-3333-333333333333;Emitir holerite;POST;/holerites;Geracao de holerite mensal;true;2026-05-05T08:31:00-03:00
