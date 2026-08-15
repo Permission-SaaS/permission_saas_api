@@ -213,12 +213,41 @@ Nas etapas 1-3 não há banco: a persistência é um `Map` in-memory e a demonst
 
 Ou seja: **manter o `@Builder.Default` do `id` na etapa 4 reintroduz um bug já corrigido neste projeto.**
 
+### Consequência para o `@EqualsAndHashCode(of = "id")`
+
+`Project`, `Role` e `Route` são anotadas com `@EqualsAndHashCode(of = "id")` — igualdade por identidade, não por valor. Dois objetos são a mesma entidade se têm o mesmo `id`, independentemente dos demais campos. É a semântica correta para uma **entidade** (ao contrário de um value object, que se compara por conteúdo), e é o padrão seguido por todo o domínio do projeto: `Client`, `Plan`, `Subscription` e `ApiKey` usam a mesma anotação.
+
+Hoje isso é seguro **por causa do ADR-003**, e não por acaso. O `@Builder.Default` garante duas propriedades das quais o `equals`/`hashCode` depende:
+
+| Propriedade | Por que importa |
+|---|---|
+| `id` nunca é `null` | duas entidades distintas nunca colidem como "ambas nulas" |
+| `id` nunca muda durante a vida do objeto | o `hashCode()` é estável, então o objeto continua achável dentro de um `HashSet`/`HashMap` |
+
+**O item 1 do checklist abaixo destrói as duas.** Com `private UUID id;` sem default, o `id` fica `null` até o primeiro `save()`, e aí:
+
+1. **Duas entidades novas diferentes passam a ser "iguais".** Ambas têm `id == null`, então `equals()` devolve `true`. Dois `Role` recém-criados num `Set` viram um só, silenciosamente — sem exceção, sem log. O risco é concreto na etapa 4: se a coleção `@OneToMany` for mapeada como `Set` (item 3), o Hibernate vai usar `equals`/`hashCode` para gerenciá-la.
+2. **O `hashCode()` muda depois do `save()`.** De `null` para um UUID. Se o objeto já estava dentro de um `HashSet` ou era chave de um `HashMap`, ele passa a morar no bucket errado e não é mais encontrado — nem por `contains()`, nem por `remove()`. É a armadilha clássica de `equals`/`hashCode` com entidades JPA.
+
+**As três saídas possíveis na etapa 4** (decidir antes de escrever a `ProjectJpaEntity`):
+
+| Opção | Como | Custo |
+|---|---|---|
+| **A — `Persistable`** | manter o UUID gerado no domínio e implementar `Persistable<UUID>.isNew()` para o Spring Data saber que a entidade é nova sem consultar o `id` | resolve o conflito ADR-001 × ADR-003 na raiz; `equals`/`hashCode` continuam válidos sem alteração |
+| **B — chave natural** | comparar por chave de negócio em vez de `id`. `Role` já tem uma: `projectId` + `name` (o invariante de unicidade). `Route`: `projectId` + `httpMethod` + `path` | dispensa Lombok, exige `equals`/`hashCode` à mão; `Project` não tem chave natural óbvia |
+| **C — `equals` null-safe** | `id != null && id.equals(other.id)`, com `hashCode()` retornando constante (`getClass().hashCode()`) | o Lombok não expressa isso — `equals`/`hashCode` passam a ser escritos à mão nas três classes |
+
+A opção **A** é a preferida: ela preserva tudo que já está escrito e elimina o desvio em vez de administrá-lo. As opções B e C existem aqui para o caso de a `ProjectJpaEntity` acabar exigindo `@GeneratedValue`.
+
+> Os eventos do módulo `audit` seguem regra diferente e proposital: `AuditEvent` usa `@EqualsAndHashCode(of = "id")`, mas `PermissionCheckEvent` e `ProjectLifecycleEvent` usam `@EqualsAndHashCode(callSuper = true)`, incluindo os campos próprios de cada subclasse. Revisar essa escolha ao mapear a herança `SINGLE_TABLE` na etapa 4 — herança e igualdade por identidade interagem mal quando duas subclasses diferentes podem compartilhar o mesmo `id` de tabela única.
+
 **O que fazer na etapa 4 (checklist obrigatório):**
 
-1. Remover o `@Builder.Default` de `id` em `Project`, `Role` e `Route` — voltar a `private UUID id;`.
-2. Mapear a coleção como `@OneToMany(mappedBy = "project", cascade = ALL, orphanRemoval = true)` na `ProjectJpaEntity`, deixando o JPA ser dono da FK. `Role.projectId`/`Route.projectId` no domínio passam a ser valor derivado, preenchido pelo adapter em `toDomain()`.
-3. Remover as chamadas `role.setProjectId(this.id)` / `route.setProjectId(this.id)` de `addRole`/`addRoute`, que deixam de ter função.
-4. Conferir que `ProjectRepositoryAdapter` reatribui a variável ao retorno do `save()` (`project = projectRepository.save(project)`), como manda o ADR-001.
+1. Remover o `@Builder.Default` de `id` em `Project`, `Role` e `Route` — voltar a `private UUID id;`. **Só fazer isto junto com o item 2.**
+2. Escolher e aplicar uma das três opções de `equals`/`hashCode` acima. Um `id` nulo com `@EqualsAndHashCode(of = "id")` é bug silencioso, não erro de compilação — nenhum teste existente falha por isso.
+3. Mapear a coleção como `@OneToMany(mappedBy = "project", cascade = ALL, orphanRemoval = true)` na `ProjectJpaEntity`, deixando o JPA ser dono da FK. `Role.projectId`/`Route.projectId` no domínio passam a ser valor derivado, preenchido pelo adapter em `toDomain()`.
+4. Remover as chamadas `role.setProjectId(this.id)` / `route.setProjectId(this.id)` de `addRole`/`addRoute`, que deixam de ter função.
+5. Conferir que `ProjectRepositoryAdapter` reatribui a variável ao retorno do `save()` (`project = projectRepository.save(project)`), como manda o ADR-001.
 
 **Por que aceitar o desvio em vez de evitá-lo:** a alternativa seria a rotina de demonstração atribuir os `id` manualmente antes de montar o grafo, deixando o domínio limpo. Isso empurraria uma responsabilidade de infraestrutura para dentro da demo e tornaria o `addRole` inseguro por padrão (silenciosamente gravando `null` se alguém esquecesse). Como a troca para JPA já está isolada atrás da porta `ProjectRepository` — o use case não muda —, o custo de reverter é o checklist acima, contido em três arquivos de domínio e um adapter.
 
