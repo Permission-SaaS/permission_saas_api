@@ -102,11 +102,119 @@ Value object de saída da chain (`permission/domain/dto`). Carrega `granted` (bo
 
 ---
 
+## `project`
+
+### Project
+
+Projeto de um cliente. Agrega os cargos (`Role`) e as rotas protegidas (`Route`) que o módulo `permission` consulta ao validar um acesso.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | UUID | PK |
+| `clientId` | UUID | FK → `Client` |
+| `name` | String | — |
+| `description` | String | — |
+| `maxRoles` | Integer | limite de cargos; **`null` = sem limite** |
+| `roles` | `List<Role>` | 1-N |
+| `routes` | `List<Route>` | 1-N |
+| `isActive` | boolean | desativação — o projeto existe, mas não valida permissões |
+| `createdAt`, `updatedAt` | timestamp | — |
+| `deletedAt` | timestamp | **soft delete** — `null` enquanto o projeto existe |
+
+**Invariante:** um `Project` não pode ter mais que `maxRoles` cargos — aplicado em `Project.addRole()`, lança `PlanLimitExceededException` (409). Quando `maxRoles` é `null`, não há limite.
+
+**Invariante:** dois cargos do mesmo projeto não podem ter o mesmo `name`, comparação **case-insensitive** (`Admin` e `admin` são o mesmo cargo) — aplicado em `Project.addRole()`, lança `RoleAlreadyExistsException` (409).
+
+**Invariante:** duas rotas do mesmo projeto não podem ter a mesma combinação `path` + `httpMethod`, comparação **case-insensitive** — aplicado em `Project.addRoute()`, lança `RouteAlreadyExistsException` (409). A chave é a combinação, não o `path` sozinho: `GET /users` e `POST /users` são rotas distintas e legítimas.
+
+**Desativação ≠ exclusão.** São operações independentes, com campos próprios:
+
+| Operação | Campo | Significado |
+|---|---|---|
+| `deactivate()` | `isActive = false` | projeto existe e é listado, mas está suspenso |
+| exclusão (soft delete) | `deletedAt = now()` | projeto deixa de existir para o resto do sistema |
+
+**Invariante:** um projeto excluído (`deletedAt != null`) não aceita **nenhuma** alteração de estado — `addRole()`, `addRoute()`, `activate()`, `deactivate()` e `delete()` lançam `ProjectAlreadyDeletedException` (409). A guarda está centralizada em `Project.ensureNotDeleted()`, chamada como primeira linha de cada mutador. Em particular, `activate()` não ressuscita um projeto excluído.
+
+**Invariante:** `deactivate()` num projeto já inativo lança `ProjectAlreadyInactiveException` (409); `activate()` num projeto já ativo lança `ProjectAlreadyActiveException` (409). São transições de estado inválidas, não erros de programação — por isso herdam `BusinessRuleException` e viram 409, nunca 500.
+
+**Consequência para as consultas:** toda leitura de `Project` filtra `deletedAt IS NULL`. No adapter in-memory das etapas 2-3 isso é um `filter` no stream; na etapa 4 vira `findByDeletedAtIsNull()`. Sem esse filtro, um projeto excluído continua aparecendo no `GET /projects` depois de um `DELETE` bem-sucedido.
+
+O `toString()` de `Project` lista `roles` e `routes` — é a representação usada pela rotina de demonstração da Etapa 1.
+
+### Role
+
+Cargo dentro de um projeto. Referencia o projeto pai por `projectId` (UUID), não por objeto.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | UUID | PK |
+| `projectId` | UUID | FK → `Project` |
+| `name`, `description` | String | — |
+| `isActive` | boolean | — |
+| `createdAt`, `updatedAt` | timestamp | — |
+
+### Route
+
+Rota protegida de um projeto.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | UUID | PK |
+| `projectId` | UUID | FK → `Project` |
+| `name`, `description` | String | — |
+| `path` | String | caminho protegido |
+| `httpMethod` | String | — |
+| `isActive` | boolean | — |
+| `createdAt`, `updatedAt` | timestamp | — |
+
+---
+
+## `audit`
+
+### AuditEvent (abstrata)
+
+Raiz da trilha de auditoria. É abstrata porque a trilha guarda tipos heterogêneos de evento, cada um com campos próprios — a herança descreve o domínio, não existe só para atender a requisito.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | UUID | PK |
+| `projectId` | UUID | FK → `Project`, guardado por id (o módulo `audit` não importa classes de `project`) |
+| `occurredAt` | timestamp | default `now()` |
+
+Contrato abstrato: `describe()` (resumo legível, usado no console e no arquivo de auditoria) e `type()` (discriminador — vira a `@DiscriminatorColumn` do mapeamento `SINGLE_TABLE`).
+
+### PermissionCheckEvent
+
+Resultado de uma validação executada pela chain do módulo `permission`. Evento de maior volume da trilha.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `routePath`, `httpMethod`, `roleName` | String | dados da tentativa de acesso |
+| `granted` | boolean | resultado |
+| `reason` | String | motivo da recusa; `null` quando concedida |
+| `durationMs` | double | tempo gasto pela chain |
+| `ipAddress`, `country` | String | origem; `country` enriquecido via OpenFeign |
+
+`type()` = `PERMISSION_CHECK`.
+
+### ProjectLifecycleEvent
+
+Mudança estrutural em um projeto.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `action` | `LifecycleAction` enum | `CREATED`, `UPDATED`, `DELETED` |
+| `projectName` | String | nome no momento do evento |
+| `performedBy` | UUID | FK → `Client` responsável |
+
+`type()` = `PROJECT_LIFECYCLE`.
+
+---
+
 ## Planejado (ainda não modelado em código)
 
-- **Project / Role / Route** (`project`) — Projeto do cliente, cargos e rotas protegidas, respeitando `Plan.maxProjects` / `Plan.maxUsersPerProject`.
 - **RoleRoute** (`project`) — associação N:N entre `Role` e `Route`.
 - **EndUser** (`project` ou `permission`) — usuário final de um projeto, vinculado a um `Role`.
-- **AuditLog** (`audit`) — registro de cada validação de permissão (ação, rota, resultado, IP).
 
 Ver estrutura completa em `docs/DER.pdf`.

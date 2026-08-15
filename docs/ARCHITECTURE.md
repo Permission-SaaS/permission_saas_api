@@ -159,6 +159,14 @@ Duas camadas de tipos, para conciliar "handler genérico por categoria HTTP" com
    | `PlanNotFoundException` | `billing/domain/plan/exception/` | `ResourceNotFoundException` | `FindPlanByIdUseCase` |
    | `PaymentDeclinedException` | `billing/domain/subscription/exception/` | `BusinessRuleException` | `SubscribeToPlanUseCase` — recebe o `subscriptionId` |
    | `ActiveSubscriptionExistsException` | `billing/domain/subscription/exception/` | `BusinessRuleException` | `SubscribeToPlanUseCase.handleExistingSubscription` — recebe o `expiresAt` |
+   | `PlanLimitExceededException` | `project/domain/project/exception/` | `BusinessRuleException` | `Project.addRole` — recebe o nome do projeto e o `maxRoles` |
+   | `RoleAlreadyExistsException` | `project/domain/role/exception/` | `BusinessRuleException` | `Project.addRole` — recebe o nome do cargo |
+   | `RouteAlreadyExistsException` | `project/domain/route/exception/` | `BusinessRuleException` | `Project.addRoute` — recebe o `httpMethod` e o `path` |
+   | `ProjectAlreadyInactiveException` | `project/domain/project/exception/` | `BusinessRuleException` | `Project.deactivate` — recebe o nome do projeto |
+   | `ProjectAlreadyActiveException` | `project/domain/project/exception/` | `BusinessRuleException` | `Project.activate` — recebe o nome do projeto |
+   | `ProjectAlreadyDeletedException` | `project/domain/project/exception/` | `BusinessRuleException` | `Project.delete` — recebe o nome do projeto |
+
+   **Por que não `IllegalStateException`:** transição de estado inválida é regra de negócio, não erro de programação. Uma `IllegalStateException` cai no handler genérico e vira **500** — o cliente recebe "erro interno" quando na verdade fez um pedido inválido. Herdando `BusinessRuleException`, a mesma situação vira **409** com mensagem legível, sem tocar no `GlobalExceptionHandler`.
 
    Exemplo: `throw new ClientNotFoundException();` em vez de `throw new ResourceNotFoundException("Client not found")` — a mensagem some do call site porque já é responsabilidade da própria exceção. Quando há dado relevante para a mensagem (email, id, data), ele entra como parâmetro do construtor (ex.: `new EmailAlreadyInUseException(command.email())`) — nunca a mensagem pronta.
 
@@ -186,6 +194,63 @@ Formato de resposta único: `shared/api/dto/ErrorResponse` (`status`, `error`, `
 **Por quê:** o Spring Data `SimpleJpaRepository.save()` decide entre `persist()` e `merge()` checando se o `id` está `null` (`isNew()`). Se o domínio já atribui um UUID antes do primeiro save, o repositório assume que a entidade **já existe** e chama `merge()` — que faz um `SELECT` pra achar a linha, não encontra (ela ainda não existe) e o Hibernate lança `StaleObjectStateException` (`ObjectOptimisticLockingFailureException`), mesmo sem `@Version` na entidade. Foi exatamente o bug corrigido em `SubscribeToPlanUseCase`/`Subscription.pendingFor()` — `Client` e `ApiKey` nunca tiveram esse problema porque já seguiam essa regra.
 
 **Como aplicar:** qualquer entidade nova com `@GeneratedValue(strategy = GenerationType.UUID)` (ex: futuras entidades de `project`, `permission`, `audit`) deve deixar o Hibernate gerar o `id` — nunca pré-atribuir no domínio. Se um fluxo salvar a mesma entidade mais de uma vez na mesma transação (como a subscription: pending → paid/rejected → active), sempre reatribuir a variável local ao retorno de `save()`.
+
+> ⚠️ **Exceção temporária:** `Project`, `Role` e `Route` violam este ADR de propósito enquanto a persistência é in-memory (etapas 1-3 da disciplina de Spring Boot). Ver ADR-003 para o motivo e o checklist de reversão obrigatório na etapa 4.
+
+---
+
+## ADR-003: `Project`/`Role`/`Route` geram o próprio `id` — desvio temporário do ADR-001
+
+**Status:** aceito para as etapas 1-3 da disciplina de Spring Boot. **Deve ser revertido na etapa 4**, quando entrar o JPA.
+
+**Contexto:** `Project.addRole()` e `Project.addRoute()` fecham a referência de volta do filho para o pai (`role.setProjectId(this.id)`) — é o que materializa o relacionamento 1-N exigido pela rubrica. Isso só funciona se `this.id` já existir no momento da chamada.
+
+Nas etapas 1-3 não há banco: a persistência é um `Map` in-memory e a demonstração monta o grafo em memória. Se o `id` só fosse atribuído no `save()`, todo `Role`/`Route` sairia com `projectId = null` — o relacionamento não apareceria nem no `toString()` da demo, nem no arquivo de auditoria.
+
+**Decisão:** enquanto a persistência for in-memory, as três entidades do módulo `project` inicializam `id` com `UUID.randomUUID()` via `@Builder.Default`.
+
+**Conflito conhecido com o ADR-001:** o ADR-001 determina o oposto — o domínio **não** deve pré-atribuir `id` quando a entidade JPA usa `@GeneratedValue(strategy = GenerationType.UUID)`, porque o `SimpleJpaRepository.save()` decide entre `persist()` e `merge()` checando `id == null`. Um `id` pré-atribuído faz o Spring Data chamar `merge()` em uma entidade que ainda não existe, e o Hibernate lança `ObjectOptimisticLockingFailureException`. Foi exatamente o bug corrigido em `SubscribeToPlanUseCase`.
+
+Ou seja: **manter o `@Builder.Default` do `id` na etapa 4 reintroduz um bug já corrigido neste projeto.**
+
+**O que fazer na etapa 4 (checklist obrigatório):**
+
+1. Remover o `@Builder.Default` de `id` em `Project`, `Role` e `Route` — voltar a `private UUID id;`.
+2. Mapear a coleção como `@OneToMany(mappedBy = "project", cascade = ALL, orphanRemoval = true)` na `ProjectJpaEntity`, deixando o JPA ser dono da FK. `Role.projectId`/`Route.projectId` no domínio passam a ser valor derivado, preenchido pelo adapter em `toDomain()`.
+3. Remover as chamadas `role.setProjectId(this.id)` / `route.setProjectId(this.id)` de `addRole`/`addRoute`, que deixam de ter função.
+4. Conferir que `ProjectRepositoryAdapter` reatribui a variável ao retorno do `save()` (`project = projectRepository.save(project)`), como manda o ADR-001.
+
+**Por que aceitar o desvio em vez de evitá-lo:** a alternativa seria a rotina de demonstração atribuir os `id` manualmente antes de montar o grafo, deixando o domínio limpo. Isso empurraria uma responsabilidade de infraestrutura para dentro da demo e tornaria o `addRole` inseguro por padrão (silenciosamente gravando `null` se alguém esquecesse). Como a troca para JPA já está isolada atrás da porta `ProjectRepository` — o use case não muda —, o custo de reverter é o checklist acima, contido em três arquivos de domínio e um adapter.
+
+---
+
+## ADR-002: `@Data` no domínio quebra o encapsulamento — refactor planejado
+
+**Status:** aceito como dívida técnica consciente. Refactor não agendado (ver "trabalho futuro").
+
+**Contexto:** todas as entidades de domínio do projeto (`Client`, `Plan`, `Subscription`, `Project`, `Role`, `Route`, `AuditEvent`) usam `@Data` do Lombok, que gera getter **e setter públicos para todo campo**. Isso entrou no projeto pela conveniência de escrever entidades rápido, antes de qualquer entidade ter regra de negócio própria.
+
+**Problema:** quando o domínio passa a guardar invariantes, o `@Data` os torna opcionais. `Project.addRole()` valida `maxRoles`, mas o `@Data` também expõe `getRoles()` e `setRoles()` — então:
+
+```java
+project.addRole(role);           // valida o limite
+project.getRoles().add(role);    // fura o limite, mesma classe, mesmo efeito
+project.setRoles(outraLista);    // troca a coleção inteira
+```
+
+O encapsulamento hoje é **convenção, não garantia**: o invariante só vale se todo chamador lembrar de usar o método certo. É a mesma classe de problema que o ADR-001 descreve — comportamento correto dependendo de disciplina do chamador em vez de estar imposto pelo tipo.
+
+**Decisão para agora:** manter `@Data` e documentar a limitação. Trocar em todas as entidades é um refactor transversal que atinge use cases, adapters e mappers dos cinco módulos; fazer isso no meio da disciplina de Spring Boot competiria com as etapas e não tem item de rubrica correspondente.
+
+**Refactor planejado (trabalho futuro):** por entidade que tenha invariante, substituir `@Data` por:
+
+1. `@Getter` + `@EqualsAndHashCode(of = "id")` — sem `@Setter` de classe.
+2. Coleções expostas como cópia imutável (`List.copyOf(roles)`) e mutáveis só pelos métodos de domínio (`addRole`, `removeRole`).
+3. Setters pontuais só onde a infraestrutura exigir (mappers JPA), preferencialmente substituídos por construtor/builder.
+
+Entidades sem regra de negócio própria (`Plan`, hoje) podem continuar com `@Data` — o critério é ter ou não invariante a proteger, não uniformidade.
+
+**Ordem sugerida:** `Project` primeiro (é quem tem o invariante mais claro, `maxRoles`), depois `Subscription` (máquina de estados), depois as demais.
 
 ---
 
@@ -245,11 +310,13 @@ src/main/java/com/saas/permissions/
 │           ├── dto/       # SubscribeToPlanRequest.java, SubscriptionResponse.java
 │           └── mapper/    # SubscribeToPlanMapper.java, SubscriptionResponseMapper.java
 │
-├── project/               # planejado, não implementado nesta entrega — ver docs/clean_code_e_padroes_de_projeto/PLAN.md
-│   ├── domain/            # Project.java, Role.java, Route.java,
-│   │                      # ProjectBuilder.java, PlanLimitValidator.java
-│   ├── application/       # CreateProjectUseCase.java
-│   └── api/               # ProjectController.java
+├── project/               # em construção na disciplina de Spring Boot — ver docs/desenvolvimento_de_aplicacoes_java_com_spring_boot/PLAN.md
+│   ├── domain/            # dividido em submódulos project/, role/, route/
+│   │   ├── project/       # Project.java
+│   │   ├── role/          # Role.java
+│   │   └── route/         # Route.java
+│   ├── application/       # CreateProjectUseCase.java (planejado)
+│   └── api/               # ProjectController.java (planejado)
 │
 ├── permission/            # implementado — Chain of Responsibility (docs/PATTERNS.md)
 │   ├── domain/            # PermissionValidationHandler.java (Handler abstrato),
@@ -264,10 +331,11 @@ src/main/java/com/saas/permissions/
 │       ├── dto/           # ValidatePermissionRequest.java, PermissionValidationResponse.java
 │       └── mapper/        # ValidatePermissionMapper.java, PermissionValidationResponseMapper.java
 │
-└── audit/                 # planejado, não implementado nesta entrega — ver docs/clean_code_e_padroes_de_projeto/PLAN.md
-    ├── domain/            # AuditLog.java, PermissionEventListener.java (porta)
-    ├── application/       # AuditLogListener.java
-    └── infrastructure/    # JpaAuditLogRepository.java
+└── audit/                 # em construção na disciplina de Spring Boot — ver docs/desenvolvimento_de_aplicacoes_java_com_spring_boot/PLAN.md
+    ├── domain/            # AuditEvent.java (abstrata), PermissionCheckEvent.java,
+    │                      # ProjectLifecycleEvent.java, LifecycleAction.java
+    ├── application/       # AuditLogListener.java (planejado)
+    └── infrastructure/    # AuditEventRepositoryAdapter.java (planejado)
 ```
 
 Todos os módulos de negócio são subpacotes diretos de `com.saas.permissions` (ex: `com.saas.permissions.identity`), assim como `shared`. Essa é a estrutura exigida pela detecção automática de módulos do Spring Modulith, que considera cada subpacote direto do pacote da classe `@SpringBootApplication` como um Application Module.
