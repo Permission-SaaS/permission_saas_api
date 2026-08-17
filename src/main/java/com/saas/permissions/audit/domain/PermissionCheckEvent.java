@@ -1,12 +1,14 @@
 package com.saas.permissions.audit.domain;
 
 import lombok.AllArgsConstructor;
-import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
-@Data
+@Getter
+@Setter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -31,7 +33,8 @@ public class PermissionCheckEvent extends AuditEvent {
         return (granted ? "PERMITIDO" : "NEGADO")
                 + " " + httpMethod + " " + routePath
                 + " para o cargo '" + roleName + "'"
-                + (granted ? "" : " — " + reason);
+                + (granted ? "" : " — " + reason)
+                + " (" + durationMs + " ms)";
     }
 
     @Override
