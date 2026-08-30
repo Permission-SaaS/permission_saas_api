@@ -289,6 +289,49 @@ Entidades sem regra de negócio própria (`Plan`, hoje) podem continuar com `@Da
 
 ---
 
+## ADR-004: schema dos módulos `project` e `audit` — fronteiras de FK e herança
+
+**Status:** aceito na etapa 4 da disciplina de Spring Boot (migrations `V5`–`V8`).
+
+### Onde há FK e onde não há
+
+| Referência | FK no banco | Por quê |
+|---|---|---|
+| `roles.project_id` → `projects` | ✅ com `ON DELETE CASCADE` | mesmo módulo e mesmo agregado; acompanha o `cascade = ALL` / `orphanRemoval = true` do `@OneToMany` da `ProjectJpaEntity` |
+| `routes.project_id` → `projects` | ✅ com `ON DELETE CASCADE` | idem |
+| `projects.client_id` → `clients` | ❌ só índice | ver abaixo |
+| `audit_events.project_id` → `projects` | ❌ só índice | ver abaixo |
+
+`subscriptions` (V3) referencia `clients` e `plans` com FK, então a ausência delas aqui é desvio consciente do precedente, por dois motivos distintos:
+
+- **`projects.client_id`** — o seed de `ProjectFileLoader` (`projects.txt`) referencia clientes fictícios que não existem em `clients`; com FK, o carregamento dos arquivos texto (itens 4, 5 e 7 da rubrica) falharia. Além disso, `CreateProjectUseCase` não valida o cliente contra o módulo `identity`: a FK transformaria um `clientId` inexistente em erro 500 do driver, sem exceção de domínio mapeada pelo `GlobalExceptionHandler`. Validar o cliente de verdade exigiria o `identity` expor um `@NamedInterface` de consulta — trabalho futuro; aí a FK passa a fazer sentido.
+- **`audit_events.project_id`** — a trilha de auditoria precisa sobreviver ao projeto que descreve, e o módulo `audit` não é dono da tabela `projects`. A coluna é **nullable** porque `PermissionValidatedEvent` ainda não carrega o projeto (mesma lacuna do `httpMethod`, achado 3 de 29/08).
+
+### Herança do `audit`: `SINGLE_TABLE`
+
+`AuditEvent` → `PermissionCheckEvent` / `ProjectLifecycleEvent` foi mapeada como tabela única discriminada por `event_type`, com valores iguais aos devolvidos por `AuditEvent.type()`. A alternativa `JOINED` foi descartada porque a trilha é *append-only* e sempre lida pela superclasse (`FindAuditEventsUseCase` devolve `List<AuditEvent>`) — pagar um JOIN por leitura não se justifica.
+
+O preço é que as colunas de cada subclasse precisam ser `NULL`-áveis. A obrigatoriedade volta como `CHECK` condicionado ao discriminador (`audit_events_permission_check_fields`, `audit_events_lifecycle_fields`), o que também protege `granted` e `duration_ms`, primitivos no domínio (`boolean`/`double`) que não aceitam `null`.
+
+### O schema espelha os invariantes do domínio
+
+As regras que hoje só existem em Java foram repetidas como constraint, para que dados inseridos fora da API — o seed dos `.txt`, por exemplo — respeitem a mesma regra:
+
+| Constraint | Regra de domínio correspondente |
+|---|---|
+| `uq_roles_project_name` (`project_id`, `LOWER(name)`) | `Project.addRole()` → `RoleAlreadyExistsException` |
+| `uq_routes_project_method_path` (`project_id`, `UPPER(http_method)`, `LOWER(path)`) | `Project.addRoute()` → `RouteAlreadyExistsException` |
+| `projects_max_roles_check` | `Project.update()` → `InvalidProjectDataException`; `@Min(1)` de `CreateProjectRequest` |
+| `routes_http_method_check`, `routes_path_check` | `@Pattern` de `AddRouteRequest` |
+
+Dois índices são parciais, cobrindo exatamente os filtros que os use cases aplicam: `idx_projects_active` (`WHERE deleted_at IS NULL`) para o soft delete que `FindAllProjectsUseCase`/`FindProjectByIdUseCase` tratam como inexistência, e `idx_audit_events_denied` (`WHERE granted = FALSE`) para o filtro `onlyDenied` de `FindAuditEventsUseCase`.
+
+`updated_at` é *nullable* nas três tabelas novas, ao contrário de `clients`/`subscriptions`, que usam `DEFAULT NOW()`: `Project`, `Role` e `Route` só preenchem `updatedAt` na primeira alteração, e um default reescreveria essa semântica.
+
+**Verificado em 30/08/2026:** as oito migrations aplicam em sequência num Postgres 16 limpo; o seed dos três `.txt` entra íntegro (3 projetos, 8 cargos, 10 rotas) e 16 casos de constraint se comportam como o domínio.
+
+---
+
 ## Segurança do Swagger UI
 
 `SecurityConfig` deixa todo o restante da API com `permitAll()` (autenticação real de cliente é trabalho futuro, ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`), mas `/swagger-ui/**` e `/v3/api-docs/**` exigem HTTP Basic com um usuário fixo em memória (`InMemoryUserDetailsManager`), configurado via `app.swagger.username` / `app.swagger.password` (env vars `SWAGGER_USERNAME` / `SWAGGER_PASSWORD`, default `admin` / `admin123`). `/actuator/**` continua liberado.
