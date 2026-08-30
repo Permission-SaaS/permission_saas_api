@@ -8,7 +8,11 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import com.saas.permissions.project.application.FindAllProjectsUseCase;
+import com.saas.permissions.project.application.FindProjectRoutesUseCase;
+import com.saas.permissions.project.application.SearchProjectsUseCase;
+import com.saas.permissions.project.application.command.SearchProjectsQuery;
 import com.saas.permissions.project.domain.project.Project;
+import com.saas.permissions.project.domain.route.Route;
 
 import lombok.RequiredArgsConstructor;
 
@@ -20,12 +24,40 @@ public class ProjectDemoRunner implements CommandLineRunner {
 
     private final FindAllProjectsUseCase findAllProjectsUseCase;
 
+    private final SearchProjectsUseCase searchProjectsUseCase;
+
+    private final FindProjectRoutesUseCase findProjectRoutesUseCase;
+
     @Override
     public void run(String... args) throws Exception {
         List<Project> projects = this.findAllProjectsUseCase.execute();
 
         for (Project project : projects) {
             System.out.println("Loaded project: " + project);
+        }
+
+        // Transformacao da colecao: de Project para uma linha de resumo.
+        String summary = projects.stream()
+                .map(project -> project.getName() + " (" + project.getRoles().size() + " cargos, "
+                        + project.getRoutes().size() + " rotas)")
+                .reduce((left, right) -> left + " | " + right)
+                .orElse("nenhum projeto carregado");
+
+        System.out.println("\nResumo: " + summary);
+
+        // Busca com filtro por trecho de nome e ordenacao alfabetica.
+        List<Project> found = this.searchProjectsUseCase.execute(new SearchProjectsQuery("portal", true));
+
+        System.out.println("\nBusca por 'portal' (somente ativos): " + found.size() + " projeto(s)");
+        found.forEach(project -> System.out.println("  - " + project.getName()));
+
+        // Filtragem das rotas de um projeto pelo metodo HTTP.
+        if (!projects.isEmpty()) {
+            Project first = projects.get(0);
+            List<Route> getRoutes = this.findProjectRoutesUseCase.execute(first.getId(), "GET");
+
+            System.out.println("\nRotas GET de " + first.getName() + ": " + getRoutes.size());
+            getRoutes.forEach(route -> System.out.println("  - " + route.getHttpMethod() + " " + route.getPath()));
         }
     }
 
