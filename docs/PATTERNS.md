@@ -2,7 +2,7 @@
 
 Este arquivo documenta cada padrão de projeto (GoF) usado no sistema: onde vive, por que foi escolhido, e como estender.
 
-**Status atual:** `identity`, `shared`, `billing` (Factory Method `ApiKeyFactory`, Adapter `FakePaymentGatewayAdapter`, Command+Mapper de `SubscribeToPlanUseCase`) e `permission` (Chain of Responsibility) têm código implementado — isso já cobre o mínimo exigido (1 criacional + 1 estrutural + 1 comportamental). Os padrões de `project` (Builder) e `audit` (Observer) ficaram **fora do escopo desta entrega por falta de tempo** — ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`, "trabalho futuro". Estão marcados como planejados abaixo.
+**Status atual:** `identity`, `shared`, `billing` (Factory Method `ApiKeyFactory`, Adapter `FakePaymentGatewayAdapter`, Command+Mapper de `SubscribeToPlanUseCase`) e `permission` (Chain of Responsibility) vieram da disciplina de Clean Code. O **Observer** (`audit/application/AuditLogListener`) foi implementado na disciplina de Spring Boot e está descrito abaixo. O **Builder** de `project` segue planejado — o agregado é montado por `Project.builder()` do Lombok mais `addRole`/`addRoute`, que já resolvem o caso sem uma classe de builder própria.
 
 ---
 
@@ -72,13 +72,24 @@ Este arquivo documenta cada padrão de projeto (GoF) usado no sistema: onde vive
 - **Por que Chain of Responsibility e não uma sequência de `if`s no use case:** cada handler não sabe quantos handlers vêm depois dele nem o que eles fazem — só sabe repassar. Adicionar uma quarta validação (ex.: rate limiting) é criar uma quarta classe e religar a chain no construtor do use case; nenhum handler existente muda (OCP). Um método único com vários `if` aninhados violaria isso — qualquer nova regra exigiria editar a mesma função.
 - **Como estender:** criar uma nova subclasse de `PermissionValidationHandler`, implementar `check()`, anotar `@Component`, injetar no construtor de `ValidatePermissionUseCase` e incluir no `linkWith(...)` — na ordem que fizer sentido (ex.: handler mais barato primeiro, para short-circuit cedo).
 
+### Observer — trilha de auditoria (`permission` → `audit`)
+
+- **Onde:** `permission/domain/event/PermissionValidatedEvent.java` (o evento) + `permission/application/ValidatePermissionUseCase.java` (Subject, publica) + `audit/application/AuditLogListener.java` (Observer, consome) + `audit/domain/AuditEventRepository.java` (porta) + `audit/infrastructure/InMemoryAuditEventRepository.java` (adapter das etapas 2-3).
+- **Estrutura aplicada:**
+  - **Subject:** `ValidatePermissionUseCase` mede a duração da chain e publica `PermissionValidatedEvent` via `ApplicationEventPublisher`. Não conhece nenhum observador — nem sabe que o módulo `audit` existe.
+  - **Observer:** `AuditLogListener` reage ao evento, converte em `PermissionCheckEvent` (subclasse de `AuditEvent`) e grava pela porta.
+- **Por que evento e não chamada direta:** auditoria é efeito colateral, não parte da decisão de permitir ou negar. Uma chamada direta faria `permission` depender de `audit` e quebraria a regra de comunicação entre módulos (`ARCHITECTURE.md`); com evento, acrescentar um segundo consumidor (métricas, alerta de tentativas negadas) é criar outra classe com `@EventListener`, sem tocar em `permission`.
+- **O evento não carrega a ApiKey**, de propósito: ele atravessa a fronteira do módulo, e a chave é credencial, não dado de auditoria.
+- **`@NamedInterface("events")`:** `permission/domain/event/package-info.java` é anotado para que o pacote seja visível a outros módulos — sem isso, o import feito por `audit` quebraria `ApplicationModulesIntegrationTests.verifiesModularStructure()`.
+- **Por que `@EventListener` e não `@ApplicationModuleListener`:** o `@ApplicationModuleListener` do Spring Modulith implica `@TransactionalEventListener(AFTER_COMMIT)`, e a validação de permissão ainda não roda dentro de uma transação — o evento simplesmente não chegaria ao ouvinte. A troca está prevista para a etapa 4, quando a persistência JPA tornar o fluxo transacional; é também o caminho para o processamento assíncrono citado como trabalho futuro.
+- **Como estender:** criar outra classe `@Component` com um método `@EventListener` recebendo `PermissionValidatedEvent`. Para auditar um novo tipo de acontecimento, criar uma subclasse de `AuditEvent` implementando `describe()`/`type()` — o `AuditEventResponseMapper` e o `GET /audit-events` não mudam, porque leem só o contrato da classe abstrata.
+
 ---
 
 ## Planejados (ainda não implementados)
 
 | Pattern | Local previsto | Por que será usado |
 |---|---|---|
-| Builder | `project/domain/ProjectBuilder` | Montar `Project` com `Roles` e `Routes` passo a passo, evitando um construtor com muitos parâmetros opcionais |
-| Observer | `audit/application/AuditLogListener` | Desacoplar o registro de auditoria da lógica de validação de permissão — `permission` dispara o evento, `audit` reage |
+| Builder | `project/domain/ProjectBuilder` | Montar `Project` com `Roles` e `Routes` passo a passo. Hoje o `@Builder` do Lombok mais `addRole`/`addRoute` cobrem o caso, e cada `add` roda os invariantes do agregado — uma classe de builder própria só se justifica se surgir uma montagem em vários passos que precise validar o conjunto no final |
 
 Ao implementar cada um, mover a entrada correspondente para a seção "Implementados" acima com local real, motivo e como estender — igual ao padrão dos demais.

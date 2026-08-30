@@ -1,6 +1,12 @@
 # API — Permission SaaS
 
-Cada endpoint implementado: método, path, request/response e um exemplo de `curl`. Endpoints ainda não implementados (`project`, `audit`) não aparecem aqui — ver `CLAUDE.md` e `docs/clean_code_e_padroes_de_projeto/PLAN.md` para o que falta.
+Cada endpoint implementado: método, path, request/response e um exemplo de `curl`.
+
+Uma coleção Postman com todos os endpoints, encadeados por variáveis (`clientId` → `planId` → `apiKey` → `projectId`) e com asserções de status, está versionada em `docs/postman/permission-saas.postman_collection.json`. Para rodar a coleção inteira sem abrir o Postman:
+
+```bash
+npx newman run docs/postman/permission-saas.postman_collection.json
+```
 
 ## Formato padrão de erro
 
@@ -104,6 +110,26 @@ curl http://localhost:8080/clients/8f14e45f-ceea-4c72-8a13-000000000000
 
 ## `billing`
 
+### `POST /plans`
+
+Cadastra um `Plan`.
+
+**Request** (`RegisterPlanRequest`): `name` (obrigatório), `description`, `maxProjects`, `maxUsersPerProject`, `price` (obrigatório, positivo).
+
+**Response** `200 OK` (`PlanResponse`).
+
+> ⚠️ Este é o único endpoint de criação do sistema que devolve **200** em vez de **201 Created** — os demais (`POST /clients/register`, `POST /subscriptions`, `POST /projects`) devolvem 201. Divergência conhecida, herdada da disciplina anterior; a coleção Postman assere 200 para refletir o comportamento real.
+
+**Erros:** `500 Internal Server Error` se o `name` já existir — a constraint `uq_plans_name` estoura no banco e não há exceção de domínio correspondente, então cai no handler genérico. O correto seria `409 Conflict` via uma `PlanNameAlreadyInUseException`; registrado como pendência.
+
+```bash
+curl -X POST http://localhost:8080/plans \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Pro","description":"Plano padrão","maxProjects":10,"maxUsersPerProject":50,"price":99.90}'
+```
+
+---
+
 ### `GET /plans/{planId}`
 
 Busca um `Plan` pelo id.
@@ -200,4 +226,207 @@ Valida se uma ApiKey pode acessar uma `route` com um `role`. Roda a `Chain of Re
 curl -X POST http://localhost:8080/validate-permission \
   -H "Content-Type: application/json" \
   -d '{"apiKey":"sk_78dad83cea33462aba966523f184ddce","role":"admin","route":"/orders"}'
+```
+
+---
+
+## `project`
+
+Todos os endpoints deste módulo operam sobre o `Map` em memória (`InMemoryProjectRepository`) nas etapas 2-3 da disciplina de Spring Boot; na etapa 4 o mesmo contrato passa a ser servido pelo adapter JPA, sem mudança na API.
+
+**Exclusão é lógica.** `DELETE` marca `deletedAt`; a partir daí o projeto responde `404` em qualquer leitura, como se não existisse. Não há endpoint para restaurar.
+
+### `GET /projects`
+
+Lista os projetos não excluídos, em ordem alfabética.
+
+**Query params** (todos opcionais, `SearchProjectsRequest`): `name` (trecho do nome, ignora maiúsculas, máx. 120 caracteres) e `onlyActive` (`true`/`false`).
+
+**Response** `200 OK` — array de `ProjectResponse`:
+```json
+[
+  {
+    "id": "0d2b1f9c-0000-0000-0000-000000000000",
+    "clientId": "8f14e45f-ceea-4c72-8a13-000000000000",
+    "name": "Portal Interno",
+    "description": "Portal administrativo",
+    "maxRoles": 5,
+    "active": true,
+    "createdAt": "2026-08-29T22:00:00Z",
+    "updatedAt": null,
+    "roles": [
+      {
+        "id": "1a1a1a1a-0000-0000-0000-000000000000",
+        "projectId": "0d2b1f9c-0000-0000-0000-000000000000",
+        "name": "ADMIN",
+        "description": "Acesso total",
+        "active": true,
+        "createdAt": "2026-08-29T22:00:00Z",
+        "updatedAt": null
+      }
+    ],
+    "routes": [
+      {
+        "id": "2b2b2b2b-0000-0000-0000-000000000000",
+        "projectId": "0d2b1f9c-0000-0000-0000-000000000000",
+        "name": "Listar usuários",
+        "httpMethod": "GET",
+        "path": "/users",
+        "description": "Listagem paginada",
+        "active": true,
+        "createdAt": "2026-08-29T22:00:00Z",
+        "updatedAt": null
+      }
+    ]
+  }
+]
+```
+
+**Serialização do 1-N:** o pai embute os filhos; cada filho referencia o pai por `projectId` (UUID), nunca por objeto. É o que evita referência circular sem precisar de `@JsonIgnore`.
+
+```bash
+curl "http://localhost:8080/projects?name=portal&onlyActive=true"
+```
+
+---
+
+### `GET /projects/{projectId}`
+
+**Response** `200 OK` (`ProjectResponse`). **Erros:** `404 Not Found` se o projeto não existir ou estiver excluído (`ProjectNotFoundException`).
+
+```bash
+curl http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000
+```
+
+---
+
+### `POST /projects`
+
+Cria um projeto.
+
+**Request** (`CreateProjectRequest`):
+```json
+{
+  "clientId": "8f14e45f-ceea-4c72-8a13-000000000000",
+  "name": "Portal do Cliente",
+  "description": "Portal de autoatendimento",
+  "maxRoles": 5
+}
+```
+
+Validações: `clientId` obrigatório; `name` obrigatório, máx. 120; `description` máx. 500; `maxRoles` obrigatório, mínimo 1.
+
+**Response** `201 Created` (`ProjectResponse`) + header `Location: /projects/{id}`. **Erros:** `400 Bad Request` em dados inválidos.
+
+```bash
+curl -X POST http://localhost:8080/projects \
+  -H "Content-Type: application/json" \
+  -d '{"clientId":"8f14e45f-ceea-4c72-8a13-000000000000","name":"Portal do Cliente","description":"Portal de autoatendimento","maxRoles":5}'
+```
+
+---
+
+### `PUT /projects/{projectId}`
+
+Alteração **parcial**: campo ausente ou nulo mantém o valor atual; string em branco é recusada.
+
+**Request** (`UpdateProjectRequest`): `name`, `description`, `maxRoles` — todos opcionais.
+
+**Response** `200 OK` (`ProjectResponse`). **Erros:** `400` em dados inválidos; `404` se o projeto não existir ou estiver excluído; `409 Conflict` se `maxRoles` for menor que a quantidade de cargos já cadastrados (`PlanLimitExceededException`).
+
+```bash
+curl -X PUT http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000 \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Portal do Cliente v2","maxRoles":8}'
+```
+
+---
+
+### `DELETE /projects/{projectId}`
+
+Exclusão lógica (`deletedAt`).
+
+**Response** `204 No Content`. **Erros:** `404 Not Found` se o projeto não existir **ou já tiver sido excluído** — o segundo `DELETE` devolve 404, não 409.
+
+```bash
+curl -X DELETE http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000 -i
+```
+
+---
+
+### `POST /projects/{projectId}/roles`
+
+Adiciona um cargo ao projeto.
+
+**Request** (`AddRoleRequest`): `name` (obrigatório, máx. 80), `description` (máx. 255).
+
+**Response** `201 Created` (`RoleResponse`). **Erros:** `400` em dados inválidos; `404` se o projeto não existir ou estiver excluído; `409 Conflict` se já existir cargo com o mesmo nome — comparação ignora maiúsculas (`RoleAlreadyExistsException`) — ou se o limite `maxRoles` do projeto já tiver sido atingido (`PlanLimitExceededException`).
+
+```bash
+curl -X POST http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000/roles \
+  -H "Content-Type: application/json" \
+  -d '{"name":"ADMIN","description":"Acesso total"}'
+```
+
+---
+
+### `POST /projects/{projectId}/routes`
+
+Adiciona uma rota protegida ao projeto.
+
+**Request** (`AddRouteRequest`): `name` (obrigatório, máx. 80), `path` (obrigatório, precisa começar com `/`, máx. 255), `httpMethod` (obrigatório, um de `GET|POST|PUT|PATCH|DELETE`, ignora maiúsculas), `description` (máx. 255).
+
+**Response** `201 Created` (`RouteResponse`). **Erros:** `400` em dados inválidos; `404` se o projeto não existir ou estiver excluído; `409 Conflict` se já existir a mesma combinação `httpMethod` + `path` (`RouteAlreadyExistsException`).
+
+```bash
+curl -X POST http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000/routes \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Listar usuários","path":"/users","httpMethod":"GET","description":"Listagem paginada"}'
+```
+
+---
+
+### `GET /projects/{projectId}/routes`
+
+Lista as rotas do projeto, ordenadas por `path`.
+
+**Query param** (opcional): `httpMethod` — filtra por método, ignorando maiúsculas.
+
+**Response** `200 OK` — array de `RouteResponse`. **Erros:** `404` se o projeto não existir ou estiver excluído.
+
+```bash
+curl "http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000/routes?httpMethod=GET"
+```
+
+---
+
+## `audit`
+
+### `GET /audit-events`
+
+Lista a trilha de auditoria, do evento mais recente para o mais antigo. Os eventos são gravados pelo Observer `AuditLogListener`, que reage ao `PermissionValidatedEvent` publicado a cada `POST /validate-permission` — ver `docs/PATTERNS.md`.
+
+**Query params** (todos opcionais, `SearchAuditEventsRequest`): `type` (`PERMISSION_CHECK` ou `PROJECT_LIFECYCLE`), `projectId` (UUID) e `onlyDenied` (`true` devolve só as validações negadas).
+
+**Response** `200 OK` — array de `AuditEventResponse`:
+```json
+[
+  {
+    "id": "e24dd619-da77-46c7-b8ab-956d90d0ad71",
+    "type": "PERMISSION_CHECK",
+    "projectId": null,
+    "occurredAt": "2026-08-29T23:04:05.881829269-03:00",
+    "description": "NEGADO null /admin para o cargo 'GUEST' — invalid or inactive api key (74.42 ms)"
+  }
+]
+```
+
+> ⚠️ O `null` na descrição é o `httpMethod`: `ValidatePermissionRequest` carrega só `route`, sem o método HTTP, então o evento não tem o que registrar nesse campo. Fecha na etapa 4, junto com a regra real do `RoleRouteValidationHandler`, que vai precisar do método para casar a rota com o projeto.
+
+**Um DTO para toda a hierarquia:** `AuditEvent` é abstrata e tem duas subclasses (`PermissionCheckEvent`, `ProjectLifecycleEvent`). O que as distingue aparece em `type` e `description`, ambos polimórficos (`type()` e `describe()`), então a API expõe a herança sem precisar de um DTO por subclasse.
+
+**Erros:** `400 Bad Request` se `type` não for um dos valores conhecidos.
+
+```bash
+curl "http://localhost:8080/audit-events?onlyDenied=true"
 ```

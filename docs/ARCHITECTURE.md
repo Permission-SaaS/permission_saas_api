@@ -44,12 +44,14 @@ billing ────────────────────────
     └── salva Subscription + ApiKey
   Quem tem plano ativo ganha uma ApiKey para usar o sistema
 
-project ─────────────────────────────────────────────────  ← não implementado nesta entrega
-  POST /projects → CreateProjectUseCase (planejado)
-    ├── ProjectBuilder monta Project + Roles + Routes
-    └── PlanLimitValidator garante que não passa do limite do plano
-  Define o que pode ser acessado e por quem (Roles/Routes) —
-  fora de escopo por falta de tempo, ver docs/clean_code_e_padroes_de_projeto/PLAN.md
+project ─────────────────────────────────────────────────  ← implementado na disciplina de Spring Boot
+  CRUD completo em /projects, mais os sub-recursos /roles e /routes
+    ├── Project é o agregado: addRole/addRoute mantêm os invariantes
+    │   (maxRoles, duplicidade de cargo, duplicidade de httpMethod+path)
+    ├── exclusão é lógica (deletedAt) — projeto excluído responde 404
+    └── etapas 2-3: InMemoryProjectRepository (Map) semeado pelos .txt;
+        etapa 4: adapter JPA, sem mudança na API
+  Define o que pode ser acessado e por quem (Roles/Routes)
 
 permission ──────────────────────────────────────────────  ← núcleo, implementado
   POST /validate-permission → ValidatePermissionUseCase
@@ -59,10 +61,11 @@ permission ───────────────────────
   (Role/Route) e de um 2º fator de auth, nenhum implementado ainda —
   decisão documentada, ver docs/PATTERNS.md
 
-audit ───────────────────────────────────────────────────  ← não implementado nesta entrega
-  Ouviria o evento disparado pelo módulo permission
-  AuditLogListener → salva AuditLog no banco (planejado)
-  Fora de escopo por falta de tempo, ver docs/clean_code_e_padroes_de_projeto/PLAN.md
+audit ───────────────────────────────────────────────────  ← implementado na disciplina de Spring Boot
+  GET /audit-events → FindAuditEventsUseCase (filtros type/projectId/onlyDenied)
+  AuditLogListener escuta PermissionValidatedEvent e registra a validação
+  AuditEvent é abstrata: PermissionCheckEvent e ProjectLifecycleEvent
+  herdam dela — a API expõe a hierarquia por type() e describe()
 ```
 
 ---
@@ -72,19 +75,22 @@ audit ────────────────────────�
 ```
 identity ──→ billing ──→ permission
                             │
-                         (evento, planejado)
+                     PermissionValidatedEvent
                             ↓
                           audit
 
-project (planejado, não integrado nesta entrega)
+project (CRUD próprio; ainda não consultado pelo RoleRouteValidationHandler)
 ```
 
 ### Fluxo de negócio completo (implementado nesta entrega)
 
 1. Cliente se cadastra (`identity`)
 2. Assina um plano e recebe uma ApiKey (`billing`)
-3. Qualquer sistema externo chama `POST /validate-permission` com a ApiKey + cargo + rota (`permission`) — a ApiKey é validada de verdade contra `billing`; cargo/rota são aceitos pelo contrato mas ainda não checados contra um projeto real, porque `project` não existe nesta entrega (ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`)
-4. ~~Cria um projeto com cargos e rotas dentro do limite do plano~~ e ~~o resultado é gravado em log de auditoria~~ — ambos fora de escopo por falta de tempo, ver "trabalho futuro" em `docs/clean_code_e_padroes_de_projeto/PLAN.md`
+3. Qualquer sistema externo chama `POST /validate-permission` com a ApiKey + cargo + rota (`permission`) — a ApiKey é validada de verdade contra `billing`; cargo/rota são aceitos pelo contrato mas ainda não checados contra o projeto real
+4. Cria um projeto com cargos e rotas dentro do limite do plano (`project`) — implementado na disciplina de Spring Boot
+5. Cada validação de permissão é gravada na trilha de auditoria (`audit`), via evento — implementado na disciplina de Spring Boot
+
+O elo que ainda falta: o `RoleRouteValidationHandler` continua concedendo sempre, em vez de checar o cargo e a rota contra o projeto real. É a próxima evolução do `permission`, prevista para a etapa 4.
 
 ---
 
@@ -95,7 +101,7 @@ Um módulo **nunca** acessa o repositório JPA de outro módulo diretamente. A c
 | Forma                      | Quando usar                                               | Exemplo                                                                     |
 | -------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------- |
 | Chamada direta de use case | Quando um módulo precisa de dados de outro               | `permission/infrastructure/BillingApiKeyValidator` chama `billing.application.subscription.FindActiveApiKeyByPlainKeyUseCase` para validar a ApiKey (implementado); `CreateProjectUseCase` consultaria o billing para checar os limites do plano (planejado) |
-| Evento de domínio         | Quando um efeito colateral deve acontecer sem acoplamento | `permission` dispararia `PermissionValidated`; `audit` escutaria e agiria (planejado, não implementado nesta entrega) |
+| Evento de domínio         | Quando um efeito colateral deve acontecer sem acoplamento | `permission/application/ValidatePermissionUseCase` publica `PermissionValidatedEvent` (pacote `permission/domain/event`, anotado `@NamedInterface("events")`); `audit/application/AuditLogListener` consome com `@EventListener` e grava a trilha. Ver `docs/PATTERNS.md` → Observer, inclusive o motivo de ainda não ser `@ApplicationModuleListener` |
 
 ---
 
@@ -341,11 +347,24 @@ src/main/java/com/saas/permissions/
 │
 ├── project/               # em construção na disciplina de Spring Boot — ver docs/desenvolvimento_de_aplicacoes_java_com_spring_boot/PLAN.md
 │   ├── domain/            # dividido em submódulos project/, role/, route/
-│   │   ├── project/       # Project.java
-│   │   ├── role/          # Role.java
-│   │   └── route/         # Route.java
-│   ├── application/       # CreateProjectUseCase.java (planejado)
-│   └── api/               # ProjectController.java (planejado)
+│   │   ├── project/       # Project.java, ProjectRepository.java (porta)
+│   │   │   └── exception/ # ProjectNotFoundException, PlanLimitExceededException,
+│   │   │                  # InvalidProjectDataException, ProjectAlready{Active,Inactive,Deleted}Exception
+│   │   ├── role/          # Role.java + exception/RoleAlreadyExistsException
+│   │   └── route/         # Route.java + exception/RouteAlreadyExistsException
+│   ├── application/       # Create/Update/Delete/FindById/FindAll/Search ProjectUseCase,
+│   │   │                  # AddRoleToProjectUseCase, AddRouteToProjectUseCase,
+│   │   │                  # FindProjectRoutesUseCase
+│   │   └── command/       # CreateProjectCommand, UpdateProjectCommand,
+│   │                      # AddRoleToProjectCommand, AddRouteToProjectCommand, SearchProjectsQuery
+│   ├── infrastructure/    # InMemoryProjectRepository (Map, etapas 2-3), ProjectFileLoader,
+│   │                      # ProjectDemoRunner, SeedFileException
+│   └── api/               # ProjectController.java
+│       ├── dto/           # Create/Update/Search ProjectRequest, AddRole/AddRouteRequest,
+│       │                  # ProjectResponse, RoleResponse, RouteResponse
+│       └── mapper/        # CreateProjectMapper, UpdateProjectMapper, SearchProjectsMapper,
+│                          # AddRoleToProjectMapper, AddRouteToProjectMapper,
+│                          # ProjectResponseMapper, RoleResponseMapper, RouteResponseMapper
 │
 ├── permission/            # implementado — Chain of Responsibility (docs/PATTERNS.md)
 │   ├── domain/            # PermissionValidationHandler.java (Handler abstrato),
@@ -362,9 +381,14 @@ src/main/java/com/saas/permissions/
 │
 └── audit/                 # em construção na disciplina de Spring Boot — ver docs/desenvolvimento_de_aplicacoes_java_com_spring_boot/PLAN.md
     ├── domain/            # AuditEvent.java (abstrata), PermissionCheckEvent.java,
-    │                      # ProjectLifecycleEvent.java, LifecycleAction.java
-    ├── application/       # AuditLogListener.java (planejado)
-    └── infrastructure/    # AuditEventRepositoryAdapter.java (planejado)
+    │                      # ProjectLifecycleEvent.java, LifecycleAction.java,
+    │                      # AuditEventRepository.java (porta)
+    ├── application/       # AuditLogListener.java (Observer), FindAuditEventsUseCase.java
+    │   └── command/       # AuditEventQuery.java
+    ├── infrastructure/    # InMemoryAuditEventRepository (Map, etapas 2-3), AuditDemoRunner
+    └── api/               # AuditEventController.java
+        ├── dto/           # SearchAuditEventsRequest.java, AuditEventResponse.java
+        └── mapper/        # SearchAuditEventsMapper.java, AuditEventResponseMapper.java
 ```
 
 Todos os módulos de negócio são subpacotes diretos de `com.saas.permissions` (ex: `com.saas.permissions.identity`), assim como `shared`. Essa é a estrutura exigida pela detecção automática de módulos do Spring Modulith, que considera cada subpacote direto do pacote da classe `@SpringBootApplication` como um Application Module.
