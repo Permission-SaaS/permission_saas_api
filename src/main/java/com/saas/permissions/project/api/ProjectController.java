@@ -22,11 +22,16 @@ import com.saas.permissions.project.api.dto.CreateProjectRequest;
 import com.saas.permissions.project.api.dto.ProjectResponse;
 import com.saas.permissions.project.api.dto.RoleResponse;
 import com.saas.permissions.project.api.dto.RouteResponse;
+import com.saas.permissions.project.api.dto.SearchProjectsRequest;
 import com.saas.permissions.project.api.dto.UpdateProjectRequest;
+import com.saas.permissions.project.api.mapper.AddRoleToProjectMapper;
+import com.saas.permissions.project.api.mapper.AddRouteToProjectMapper;
 import com.saas.permissions.project.api.mapper.CreateProjectMapper;
 import com.saas.permissions.project.api.mapper.ProjectResponseMapper;
 import com.saas.permissions.project.api.mapper.RoleResponseMapper;
 import com.saas.permissions.project.api.mapper.RouteResponseMapper;
+import com.saas.permissions.project.api.mapper.SearchProjectsMapper;
+import com.saas.permissions.project.api.mapper.UpdateProjectMapper;
 import com.saas.permissions.project.application.AddRoleToProjectUseCase;
 import com.saas.permissions.project.application.AddRouteToProjectUseCase;
 import com.saas.permissions.project.application.CreateProjectUseCase;
@@ -35,10 +40,6 @@ import com.saas.permissions.project.application.FindProjectByIdUseCase;
 import com.saas.permissions.project.application.FindProjectRoutesUseCase;
 import com.saas.permissions.project.application.SearchProjectsUseCase;
 import com.saas.permissions.project.application.UpdateProjectUseCase;
-import com.saas.permissions.project.application.command.AddRoleToProjectCommand;
-import com.saas.permissions.project.application.command.AddRouteToProjectCommand;
-import com.saas.permissions.project.application.command.SearchProjectsQuery;
-import com.saas.permissions.project.application.command.UpdateProjectCommand;
 import com.saas.permissions.project.domain.project.Project;
 import com.saas.permissions.project.domain.role.Role;
 import com.saas.permissions.project.domain.route.Route;
@@ -66,6 +67,10 @@ public class ProjectController {
     private final FindProjectRoutesUseCase findProjectRoutesUseCase;
 
     private final CreateProjectMapper createProjectMapper;
+    private final UpdateProjectMapper updateProjectMapper;
+    private final SearchProjectsMapper searchProjectsMapper;
+    private final AddRoleToProjectMapper addRoleToProjectMapper;
+    private final AddRouteToProjectMapper addRouteToProjectMapper;
     private final ProjectResponseMapper projectResponseMapper;
     private final RoleResponseMapper roleResponseMapper;
     private final RouteResponseMapper routeResponseMapper;
@@ -73,11 +78,9 @@ public class ProjectController {
     @GetMapping
     @Operation(summary = "Lista os projetos, com filtro opcional por nome e por situacao")
     @ApiResponse(responseCode = "200", description = "Lista devolvida com sucesso")
-    public ResponseEntity<List<ProjectResponse>> searchProjects(
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) Boolean onlyActive) {
+    public ResponseEntity<List<ProjectResponse>> searchProjects(@Valid SearchProjectsRequest request) {
 
-        List<Project> projects = searchProjectsUseCase.execute(new SearchProjectsQuery(name, onlyActive));
+        List<Project> projects = searchProjectsUseCase.execute(searchProjectsMapper.map(request));
 
         return ResponseEntity.ok(projects.stream().map(projectResponseMapper::map).toList());
     }
@@ -120,11 +123,7 @@ public class ProjectController {
             @PathVariable UUID projectId,
             @RequestBody @Valid UpdateProjectRequest request) {
 
-        Project project = updateProjectUseCase.execute(new UpdateProjectCommand(
-                projectId,
-                request.name(),
-                request.description(),
-                request.maxRoles()));
+        Project project = updateProjectUseCase.execute(updateProjectMapper.map(projectId, request));
 
         return ResponseEntity.ok(projectResponseMapper.map(project));
     }
@@ -153,10 +152,7 @@ public class ProjectController {
             @PathVariable UUID projectId,
             @RequestBody @Valid AddRoleRequest request) {
 
-        Role role = addRoleToProjectUseCase.execute(new AddRoleToProjectCommand(
-                projectId,
-                request.name(),
-                request.description()));
+        Role role = addRoleToProjectUseCase.execute(addRoleToProjectMapper.map(projectId, request));
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -175,12 +171,7 @@ public class ProjectController {
             @PathVariable UUID projectId,
             @RequestBody @Valid AddRouteRequest request) {
 
-        Route route = addRouteToProjectUseCase.execute(new AddRouteToProjectCommand(
-                projectId,
-                request.name(),
-                request.path(),
-                request.httpMethod(),
-                request.description()));
+        Route route = addRouteToProjectUseCase.execute(addRouteToProjectMapper.map(projectId, request));
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
