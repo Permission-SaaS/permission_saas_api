@@ -10,10 +10,6 @@ import org.springframework.stereotype.Repository;
 import com.saas.permissions.audit.domain.AuditEvent;
 import com.saas.permissions.audit.domain.AuditEventRepository;
 
-/**
- * Banco simulado da trilha de auditoria (etapas 2-3). Substituido pelo adapter
- * JPA na etapa 4.
- */
 @Repository
 public class InMemoryAuditEventRepository implements AuditEventRepository {
 
@@ -23,9 +19,6 @@ public class InMemoryAuditEventRepository implements AuditEventRepository {
     public AuditEvent save(AuditEvent event) {
         ensureEvent(event);
 
-        // O identificador nasce aqui, e nao no dominio, para respeitar o
-        // ADR-001: na etapa 4 quem gera o id passa a ser o banco, e o dominio
-        // nao muda.
         if (event.getId() == null) {
             event.setId(UUID.randomUUID());
         }

@@ -82,6 +82,8 @@ Este arquivo documenta cada padrão de projeto (GoF) usado no sistema: onde vive
 - **O evento não carrega a ApiKey**, de propósito: ele atravessa a fronteira do módulo, e a chave é credencial, não dado de auditoria.
 - **`@NamedInterface("events")`:** `permission/domain/event/package-info.java` é anotado para que o pacote seja visível a outros módulos — sem isso, o import feito por `audit` quebraria `ApplicationModulesIntegrationTests.verifiesModularStructure()`.
 - **Por que `@EventListener` e não `@ApplicationModuleListener`:** o `@ApplicationModuleListener` do Spring Modulith implica `@TransactionalEventListener(AFTER_COMMIT)`, e a validação de permissão ainda não roda dentro de uma transação — o evento simplesmente não chegaria ao ouvinte. A troca está prevista para a etapa 4, quando a persistência JPA tornar o fluxo transacional; é também o caminho para o processamento assíncrono citado como trabalho futuro.
+- **A porta `AuditEventRepository` só registra e lê.** Não tem `update` nem `delete`: um evento de auditoria nunca é alterado nem removido, e é isso que o torna prova do que aconteceu. A restrição está no tipo, não na disciplina de quem chama.
+- **Quem atribui o `id` do evento é o adapter, não o domínio** (`InMemoryAuditEventRepository.save()`), seguindo o ADR-001. Na etapa 4 quem gera passa a ser o banco e o domínio não muda.
 - **Como estender:** criar outra classe `@Component` com um método `@EventListener` recebendo `PermissionValidatedEvent`. Para auditar um novo tipo de acontecimento, criar uma subclasse de `AuditEvent` implementando `describe()`/`type()` — o `AuditEventResponseMapper` e o `GET /audit-events` não mudam, porque leem só o contrato da classe abstrata.
 
 ---

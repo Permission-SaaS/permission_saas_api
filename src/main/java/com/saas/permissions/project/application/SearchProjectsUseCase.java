@@ -11,11 +11,6 @@ import com.saas.permissions.project.domain.project.ProjectRepository;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Busca projetos aplicando filtros opcionais sobre a colecao em memoria.
- * A filtragem, a busca por trecho de nome e a ordenacao ficam aqui, e nao na
- * porta, para manter o adapter burro (ver ADR-002).
- */
 @Service
 @RequiredArgsConstructor
 public class SearchProjectsUseCase {

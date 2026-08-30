@@ -10,11 +10,6 @@ import com.saas.permissions.project.domain.route.Route;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Lista as rotas de um projeto, opcionalmente filtradas pelo metodo HTTP e
- * sempre ordenadas por caminho. Reaproveita FindProjectByIdUseCase para herdar
- * o tratamento de projeto inexistente.
- */
 @Service
 @RequiredArgsConstructor
 public class FindProjectRoutesUseCase {

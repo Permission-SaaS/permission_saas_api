@@ -36,7 +36,6 @@ public class ProjectDemoRunner implements CommandLineRunner {
             System.out.println("Loaded project: " + project);
         }
 
-        // Transformacao da colecao: de Project para uma linha de resumo.
         String summary = projects.stream()
                 .map(project -> project.getName() + " (" + project.getRoles().size() + " cargos, "
                         + project.getRoutes().size() + " rotas)")
@@ -45,13 +44,11 @@ public class ProjectDemoRunner implements CommandLineRunner {
 
         System.out.println("\nResumo: " + summary);
 
-        // Busca com filtro por trecho de nome e ordenacao alfabetica.
         List<Project> found = this.searchProjectsUseCase.execute(new SearchProjectsQuery("portal", true));
 
         System.out.println("\nBusca por 'portal' (somente ativos): " + found.size() + " projeto(s)");
         found.forEach(project -> System.out.println("  - " + project.getName()));
 
-        // Filtragem das rotas de um projeto pelo metodo HTTP.
         if (!projects.isEmpty()) {
             Project first = projects.get(0);
             List<Route> getRoutes = this.findProjectRoutesUseCase.execute(first.getId(), "GET");

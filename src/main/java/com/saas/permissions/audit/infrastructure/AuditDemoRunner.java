@@ -55,7 +55,6 @@ public class AuditDemoRunner implements CommandLineRunner {
                         .country("BR")
                         .build());
 
-        // A lista e' de AuditEvent: type() e toString() resolvem para cada subclasse.
         for (AuditEvent event : events) {
             System.out.println("Audit event [" + event.type() + "]: " + event);
         }

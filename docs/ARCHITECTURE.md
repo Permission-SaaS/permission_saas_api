@@ -129,6 +129,20 @@ ClientResponse (api/dto/)
 
 A interface `Mapper<I, O>` fica em `shared/domain/` e é reutilizada por todos os módulos.
 
+### Convenções de DTO, Command e Mapper nos módulos `project` e `audit`
+
+**Campo nulo significa ausência de critério.** Vale para os filtros de leitura — `SearchProjectsRequest`, `SearchProjectsQuery`, `SearchAuditEventsRequest` e `AuditEventQuery`: nulo quer dizer "não filtrar por este critério", o que permite a mesma consulta servir a chamadas com e sem filtro. Em `UpdateProjectRequest` a mesma convenção significa "manter o valor atual", por ser uma alteração parcial.
+
+**Por que `UpdateProjectRequest` não tem `@NotBlank`.** O domínio precisa distinguir "não informado" (nulo, mantém) de "informado vazio" (string em branco, é erro). Um `@NotBlank` no DTO recusaria os dois casos na borda e tiraria do agregado a decisão — `Project.update()` é quem lança `InvalidProjectDataException`.
+
+**Nem todo mapper implementa `Mapper<I, O>`.** A interface tem uma entrada só, e `UpdateProjectMapper`, `AddRoleToProjectMapper` e `AddRouteToProjectMapper` montam o command a partir de duas origens: o identificador vem do caminho e o restante do corpo. Eles ficam fora da interface, mas continuam em `api/mapper/` — o controller segue apenas repassando dados, sem montar command inline. Os demais (`CreateProjectMapper`, `SearchProjectsMapper`, `SearchAuditEventsMapper` e todos os de resposta) implementam `Mapper<I, O>` normalmente.
+
+**Serialização do 1-N sem referência circular.** `ProjectResponse` embute os filhos, e `RoleResponse`/`RouteResponse` expõem o pai como `projectId` (UUID), não como objeto. O ciclo se fecha do lado do filho, o que dispensa `@JsonIgnore` ou `@JsonManagedReference` — a decisão está no formato do DTO, não em anotação de serialização.
+
+**Um DTO para toda a hierarquia de `AuditEvent`.** `AuditEventResponse` serve `PermissionCheckEvent` e `ProjectLifecycleEvent`: o que distingue as subclasses sai por `type()` e `describe()`, ambos polimórficos. A API expõe a herança sem um DTO por subclasse, e uma subclasse nova não muda o controller nem o mapper.
+
+---
+
 ---
 
 ## Adapter Pattern na infrastructure
@@ -143,6 +157,10 @@ infrastructure/
 ```
 
 Trocar o banco de dados exige apenas um novo adapter — o use case não muda.
+
+**A porta é burra; filtro e ordenação ficam no use case.** `ProjectRepository` expõe só `save`, `findById`, `findAll` e `existsById`. Quem filtra por `deletedAt`, por trecho de nome, por método HTTP e quem ordena é o use case (`SearchProjectsUseCase`, `FindProjectRoutesUseCase`, `FindAuditEventsUseCase`). Isso mantém o adapter in-memory e o adapter JPA com a mesma superfície, e concentra a regra de leitura onde ela é testável sem banco. A contrapartida é que consultas que precisem descer para o SQL (paginação, agregação) exigem ampliar a porta — na etapa 4 as consultas derivadas do `JpaRepository` entram por baixo do adapter, sem mudar o use case.
+
+`ProjectRepository` também não expõe `deleteById`: a remoção é soft delete e é comportamento do agregado (`Project.delete()`); uma remoção física na porta permitiria contorná-lo por fora do domínio.
 
 **Mesma regra vale para comunicação entre módulos, não só para JPA:** `permission/domain/ApiKeyValidator` é uma porta que `permission` define para si mesmo; quem a implementa é `permission/infrastructure/BillingApiKeyValidator`, que por dentro chama o use case `billing.application.subscription.FindActiveApiKeyByPlainKeyUseCase`. Isso mantém `permission/domain` sem importar nada de `billing` — só `permission/infrastructure` conhece a existência do outro módulo, exatamente como só `infrastructure` conhece o JPA.
 

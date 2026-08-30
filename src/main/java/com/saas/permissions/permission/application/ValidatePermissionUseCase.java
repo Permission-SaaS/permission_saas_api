@@ -39,8 +39,6 @@ public class ValidatePermissionUseCase {
 
         double durationMs = (System.nanoTime() - startedAt) / 1_000_000.0;
 
-        // Observer: quem escuta decide o que fazer com a validacao. O use case
-        // nao conhece o modulo audit.
         eventPublisher.publishEvent(new PermissionValidatedEvent(
                 request.role(),
                 request.route(),

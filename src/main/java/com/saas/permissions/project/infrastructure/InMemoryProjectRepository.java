@@ -44,11 +44,6 @@ public class InMemoryProjectRepository implements ProjectRepository {
         return List.copyOf(projects.values());
     }
 
-    // Popula o Map a partir dos arquivos texto na inicializacao do bean, para o
-    // banco simulado nascer com os dados de seed.
-    // Etapa 4: este metodo sai junto com esta classe. O ProjectFileLoader
-    // permanece (itens 4 e 5 da rubrica) e passa a ser chamado por uma migration
-    // Flyway
     @PostConstruct
     void seedFromFiles() {
         new ProjectFileLoader().load().forEach(this::save);

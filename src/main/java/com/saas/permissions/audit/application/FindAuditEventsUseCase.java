@@ -12,10 +12,6 @@ import com.saas.permissions.audit.domain.PermissionCheckEvent;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Le a trilha de auditoria aplicando filtros opcionais, do evento mais recente
- * para o mais antigo.
- */
 @Service
 @RequiredArgsConstructor
 public class FindAuditEventsUseCase {
@@ -47,10 +43,6 @@ public class FindAuditEventsUseCase {
         return query.projectId().equals(event.getProjectId());
     }
 
-    /**
-     * Filtro de negocio mais util da trilha: so as tentativas negadas. So faz
-     * sentido para a checagem de permissao, entao os demais tipos saem da lista.
-     */
     private boolean matchesDenied(AuditEvent event, Boolean onlyDenied) {
         if (onlyDenied == null || !onlyDenied) {
             return true;

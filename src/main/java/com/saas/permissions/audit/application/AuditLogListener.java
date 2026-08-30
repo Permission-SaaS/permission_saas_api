@@ -9,15 +9,6 @@ import com.saas.permissions.permission.domain.event.PermissionValidatedEvent;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Observer da trilha de auditoria: converte o evento publicado pelo modulo
- * permission em um PermissionCheckEvent e registra.
- *
- * Usa @EventListener, e nao @ApplicationModuleListener, porque este ultimo
- * implica @TransactionalEventListener(AFTER_COMMIT) e a validacao de permissao
- * ainda nao roda dentro de uma transacao — o evento simplesmente nao chegaria.
- * Trocar na etapa 4, quando a persistencia JPA tornar o fluxo transacional.
- */
 @Component
 @RequiredArgsConstructor
 public class AuditLogListener {

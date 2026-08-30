@@ -7,9 +7,6 @@ import org.springframework.stereotype.Component;
 import com.saas.permissions.project.api.dto.AddRoleRequest;
 import com.saas.permissions.project.application.command.AddRoleToProjectCommand;
 
-/**
- * O projeto vem do caminho e o cargo do corpo; ver UpdateProjectMapper.
- */
 @Component
 public class AddRoleToProjectMapper {
 
