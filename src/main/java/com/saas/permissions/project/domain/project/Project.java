@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.saas.permissions.project.domain.project.exception.InvalidProjectDataException;
 import com.saas.permissions.project.domain.project.exception.PlanLimitExceededException;
 import com.saas.permissions.project.domain.project.exception.ProjectAlreadyActiveException;
 import com.saas.permissions.project.domain.project.exception.ProjectAlreadyDeletedException;
@@ -117,6 +118,48 @@ public class Project {
         this.isActive = false;
         this.updatedAt = now;
         this.deletedAt = now;
+    }
+
+    public void update(String name, String description, Integer maxRoles) {
+        ensureNotDeleted();
+
+        ensureNotBlank(name, "name");
+        ensureNotBlank(description, "description");
+        ensureMaxRolesFitsCurrentRoles(maxRoles);
+
+        if (name != null) {
+            this.name = name;
+        }
+
+        if (description != null) {
+            this.description = description;
+        }
+
+        if (maxRoles != null) {
+            this.maxRoles = maxRoles;
+        }
+
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    private void ensureNotBlank(String value, String field) {
+        if (value != null && value.isBlank()) {
+            throw new InvalidProjectDataException(field, "must not be blank");
+        }
+    }
+
+    private void ensureMaxRolesFitsCurrentRoles(Integer maxRoles) {
+        if (maxRoles == null) {
+            return;
+        }
+
+        if (maxRoles <= 0) {
+            throw new InvalidProjectDataException("maxRoles", "must be greater than zero");
+        }
+
+        if (this.roles.size() > maxRoles) {
+            throw new PlanLimitExceededException(this.name, maxRoles);
+        }
     }
 
     private void ensureNotDeleted() {
