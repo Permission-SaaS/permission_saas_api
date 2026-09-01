@@ -1,4 +1,11 @@
 package com.saas.permissions.permission.domain.dto;
 
-public record PermissionCheckRequest(String apiKey, String role, String route) {
+import java.util.UUID;
+
+public record PermissionCheckRequest(
+        String apiKey,
+        UUID projectId,
+        String role,
+        String httpMethod,
+        String route) {
 }

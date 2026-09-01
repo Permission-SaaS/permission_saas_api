@@ -40,7 +40,9 @@ public class ValidatePermissionUseCase {
         double durationMs = (System.nanoTime() - startedAt) / 1_000_000.0;
 
         eventPublisher.publishEvent(new PermissionValidatedEvent(
+                request.projectId(),
                 request.role(),
+                request.httpMethod(),
                 request.route(),
                 result.granted(),
                 result.reason(),

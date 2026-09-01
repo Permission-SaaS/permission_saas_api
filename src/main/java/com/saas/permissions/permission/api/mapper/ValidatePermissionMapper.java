@@ -11,6 +11,11 @@ public class ValidatePermissionMapper implements Mapper<ValidatePermissionReques
 
     @Override
     public PermissionCheckRequest map(ValidatePermissionRequest request) {
-        return new PermissionCheckRequest(request.apiKey(), request.role(), request.route());
+        return new PermissionCheckRequest(
+                request.apiKey(),
+                request.projectId(),
+                request.role(),
+                request.httpMethod(),
+                request.route());
     }
 }
