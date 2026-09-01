@@ -248,4 +248,40 @@ Mudança estrutural em um projeto.
 
 - **EndUser** (`project` ou `permission`) — usuário final de um projeto, vinculado a um `Role`.
 
+### `userId` em `PermissionCheckEvent` — saber *quem* tentou, não só com qual cargo
+
+Hoje a trilha registra **o cargo** que tentou o acesso (`roleName`), mas não a pessoa. Duas tentativas
+negadas do mesmo cargo são indistinguíveis, e a pergunta mais comum numa investigação — *quem tentou
+acessar isso?* — não tem resposta.
+
+**Feature:** acrescentar `userId` ao `PermissionCheckEvent`, preenchido a partir da requisição de
+validação.
+
+**Decisões a tomar antes de implementar:**
+
+| Questão | Encaminhamento proposto |
+|---|---|
+| De quem é esse usuário? | É o **usuário final do sistema cliente**, não o `Client` do nosso `identity`. Quem sabe quem ele é é quem chama a API; portanto o valor vem no corpo de `POST /validate-permission`, não de uma sessão nossa |
+| Qual o tipo da coluna? | `VARCHAR`, não `UUID`. Cada cliente identifica seus usuários como quiser — id numérico, e-mail, UUID, login. Um `UUID` obrigaria todos ao nosso formato |
+| Tem FK? | Não, pelo mesmo motivo de `projects.client_id` e `audit_events.project_id` (ADR-004): a referência aponta para fora do nosso banco |
+| É obrigatório? | Não no primeiro momento. Torná-lo `@NotBlank` quebra todo cliente já integrado; entra opcional e a obrigatoriedade vira uma decisão de versionamento do contrato |
+| E o `performedBy` que já existe? | É outro conceito e fica como está: em `ProjectLifecycleEvent` ele identifica o **`Client`** que mexeu no projeto. `userId` é o usuário final de quem sofreu a validação |
+
+**Onde a mudança bate:**
+
+1. Migration `V10` — `ALTER TABLE audit_events ADD COLUMN user_id VARCHAR(120)`, mais um índice
+   (`user_id`, `occurred_at DESC`), que é como a consulta de investigação vai filtrar.
+2. `PermissionCheckEvent.userId` e `describe()` passando a citá-lo.
+3. `PermissionCheckEventJpaEntity` e o `AuditEventRepositoryAdapter` nos dois sentidos.
+4. `ValidatePermissionRequest` → `PermissionCheckRequest` → `PermissionValidatedEvent` →
+   `AuditLogListener`: é o mesmo caminho que `projectId` e `httpMethod` percorreram na etapa 4, e serve
+   de roteiro.
+5. `AuditEventQuery` + `GET /audit-events?userId=` para consultar, com consulta derivada
+   `findByUserIdOrderByOccurredAtDesc`.
+6. Coleção Postman e `docs/API.md`.
+
+**Ressalva de privacidade:** o campo passa a guardar um identificador de pessoa vindo de outro sistema.
+Vale registrar por quanto tempo a trilha é retida e evitar aceitar ali dados que identifiquem além do
+necessário — um id opaco basta, e-mail já é dado pessoal.
+
 Ver estrutura completa em `docs/DER.pdf`.
