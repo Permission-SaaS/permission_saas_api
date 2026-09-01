@@ -195,16 +195,26 @@ curl -X POST http://localhost:8080/subscriptions \
 
 ### `POST /validate-permission`
 
-Valida se uma ApiKey pode acessar uma `route` com um `role`. Roda a `Chain of Responsibility` descrita em `docs/PATTERNS.md`: `ApiKeyValidationHandler` → `TokenValidationHandler` → `RoleRouteValidationHandler`. A chain para no primeiro handler que negar.
+Valida se uma ApiKey pode acessar uma rota (`httpMethod` + `route`) de um projeto com um determinado cargo. Roda a `Chain of Responsibility` descrita em `docs/PATTERNS.md`: `ApiKeyValidationHandler` → `TokenValidationHandler` → `RoleRouteValidationHandler`. A chain para no primeiro handler que negar.
 
 **Request** (`ValidatePermissionRequest`):
 ```json
 {
   "apiKey": "sk_78dad83cea33462aba966523f184ddce",
-  "role": "admin",
+  "projectId": "0d2b1f9c-1111-2222-3333-444455556666",
+  "role": "ADMIN",
+  "httpMethod": "GET",
   "route": "/orders"
 }
 ```
+
+| Campo | Regra (Bean Validation) |
+|---|---|
+| `apiKey` | `@NotBlank` |
+| `projectId` | `@NotNull` — identifica o projeto dono da rota |
+| `role` | `@NotBlank`, até 80 caracteres |
+| `httpMethod` | `@NotBlank` e um de `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (case-insensitive) |
+| `route` | `@NotBlank`, até 255 caracteres, precisa começar com `/` |
 
 **Response** `200 OK` (`PermissionValidationResponse`):
 ```json
@@ -214,27 +224,37 @@ Valida se uma ApiKey pode acessar uma `route` com um `role`. Roda a `Chain of Re
 }
 ```
 
-**Importante:** só `ApiKeyValidationHandler` checa uma regra real hoje (a ApiKey precisa existir e estar `active` em `billing`). `TokenValidationHandler` e `RoleRouteValidationHandler` sempre concedem nesta entrega — dependem do módulo `project` (Role/Route) e de um 2º fator de autenticação, nenhum implementado por falta de tempo (ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`, "trabalho futuro"). Uma ApiKey inválida ou revogada é negada antes de chegar aos outros handlers:
-```json
-{
-  "granted": false,
-  "reason": "invalid or inactive api key"
-}
-```
+**Erros:** `400 Bad Request` quando algum campo acima falha na validação. Note que uma negativa de permissão **não** é erro: devolve `200` com `granted: false`.
+
+**Motivos de negativa possíveis**, na ordem em que a chain os produz:
+
+| `reason` | Handler | Significado |
+|---|---|---|
+| `invalid or inactive api key` | `ApiKeyValidationHandler` | a ApiKey não existe ou foi revogada em `billing` |
+| `project not found or inactive` | `RoleRouteValidationHandler` | o `projectId` não existe, está inativo ou foi excluído |
+| `route not registered in the project` | `RoleRouteValidationHandler` | não há rota com esse `httpMethod` + `route` no projeto |
+| `route is inactive` | `RoleRouteValidationHandler` | a rota existe mas está desativada |
+| `role not registered in the project` | `RoleRouteValidationHandler` | não há cargo com esse nome no projeto |
+| `role is inactive` | `RoleRouteValidationHandler` | o cargo existe mas está desativado |
+| `role has no active grant on this route` | `RoleRouteValidationHandler` | cargo e rota existem no projeto, mas não há concessão (`RoleRoute`) ativa ligando os dois |
+
+`TokenValidationHandler` continua concedendo sempre: depende de um 2º fator de autenticação (JWT/login), fora do escopo — ver `docs/PATTERNS.md`.
+
+> **Ordem das checagens:** projeto → rota → cargo → concessão. O último motivo é o mais comum em operação: o cargo e a rota existem, mas ninguém concedeu o acesso. Conceda com `POST /projects/{projectId}/roles/{roleId}/routes/{routeId}`.
 
 ```bash
 curl -X POST http://localhost:8080/validate-permission \
   -H "Content-Type: application/json" \
-  -d '{"apiKey":"sk_78dad83cea33462aba966523f184ddce","role":"admin","route":"/orders"}'
+  -d '{"apiKey":"sk_78dad...","projectId":"0d2b1f9c-1111-2222-3333-444455556666","role":"ADMIN","httpMethod":"GET","route":"/orders"}'
 ```
 
 ---
 
 ## `project`
 
-Todos os endpoints deste módulo operam sobre o `Map` em memória (`InMemoryProjectRepository`) nas etapas 2-3 da disciplina de Spring Boot; na etapa 4 o mesmo contrato passa a ser servido pelo adapter JPA, sem mudança na API.
+Servidos por quatro controllers, um por sub-recurso: `ProjectController` (`/projects`), `RoleController` (`/projects/{projectId}/roles`), `RouteController` (`/projects/{projectId}/routes`) e `RoleRouteController` (`/projects/{projectId}/roles/{roleId}/routes`). Todos operam sobre PostgreSQL via `ProjectRepositoryAdapter` (Spring Data JPA) — nas etapas 2-3 o mesmo contrato era servido por um `Map` em memória, sem que a API mudasse.
 
-**Exclusão é lógica.** `DELETE` marca `deletedAt`; a partir daí o projeto responde `404` em qualquer leitura, como se não existisse. Não há endpoint para restaurar.
+**Exclusão é lógica.** `DELETE` marca `deletedAt`; a partir daí o projeto responde `404` em qualquer leitura, como se não existisse. Não há endpoint para restaurar. Para apagar de vez existe `DELETE /projects/{projectId}/purge`, que remove a linha e, em cascata, seus cargos e rotas.
 
 ### `GET /projects`
 
@@ -354,9 +374,25 @@ curl -X DELETE http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-0000000000
 
 ---
 
+### `DELETE /projects/{projectId}/purge`
+
+Remoção definitiva (hard delete). Apaga a linha de `projects` e, em cascata, todos os cargos e rotas do projeto — pela FK `ON DELETE CASCADE` no banco e pelo `orphanRemoval = true` do `@OneToMany`.
+
+Diferente do `DELETE` simples, funciona também sobre um projeto **já excluído logicamente**: é o caminho para tirar do banco o que a exclusão lógica apenas escondeu.
+
+**Response** `204 No Content`. **Erros:** `404 Not Found` se não houver linha com esse id.
+
+```bash
+curl -X DELETE http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000/purge -i
+```
+
+---
+
 ### `POST /projects/{projectId}/roles`
 
-Adiciona um cargo ao projeto.
+Adiciona um cargo ao projeto. O cargo nasce **sem nenhuma rota liberada** — quem libera é `POST /projects/{projectId}/roles/{roleId}/routes/{routeId}`.
+
+`RoleResponse` traz o campo `permissions` com as concessões **ativas** do cargo, o que faz o `GET /projects/{projectId}` mostrar o grafo completo `Project → Role → RoleRoute` numa única resposta.
 
 **Request** (`AddRoleRequest`): `name` (obrigatório, máx. 80), `description` (máx. 255).
 
@@ -396,6 +432,71 @@ Lista as rotas do projeto, ordenadas por `path`.
 
 ```bash
 curl "http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000/routes?httpMethod=GET"
+```
+
+---
+
+### `POST /projects/{projectId}/roles/{roleId}/routes/{routeId}`
+
+Concede ao cargo o acesso a uma rota do projeto. É o que faz o `POST /validate-permission` responder `granted: true` para o par.
+
+Sem corpo — os três identificadores estão no caminho.
+
+**Response** `201 Created` (`RolePermissionResponse`):
+```json
+{
+  "id": "9186e7bd-432a-421f-85f5-fca210cb6ef1",
+  "roleId": "c83819ba-ff47-4c37-b365-8c3de198a6f9",
+  "routeId": "24eb7f5f-1962-4abb-bac7-0e70a143347f",
+  "active": true,
+  "grantedAt": "2026-08-31T21:41:19.514367458-03:00",
+  "revokedAt": null
+}
+```
+
+**Erros:**
+
+| Status | Quando |
+|---|---|
+| `404` | o projeto, o cargo ou a rota não existe — ou a rota/cargo pertence a outro projeto |
+| `409` | o cargo já tem uma concessão **ativa** nessa rota |
+
+```bash
+curl -X POST http://localhost:8080/projects/$PROJ/roles/$ROLE/routes/$ROUTE
+```
+
+---
+
+### `DELETE /projects/{projectId}/roles/{roleId}/routes/{routeId}`
+
+Revoga o acesso. **Não apaga a linha** — grava `revokedAt`, preservando o registro de que aquele cargo teve acesso e até quando. É o que sustenta a pergunta de auditoria "quando o cargo X deixou de poder acessar a rota Y".
+
+Depois de revogar, conceder de novo cria uma **nova** linha; as duas convivem no histórico, e só a última fica ativa.
+
+**Response** `204 No Content`. **Erros:** `404 Not Found` se não houver concessão ativa — inclusive num segundo `DELETE` seguido.
+
+```bash
+curl -X DELETE http://localhost:8080/projects/$PROJ/roles/$ROLE/routes/$ROUTE -i
+```
+
+---
+
+### `GET /projects/{projectId}/roles/{roleId}/routes`
+
+Lista as concessões do cargo, da mais recente para a mais antiga.
+
+| Query param | Default | Efeito |
+|---|---|---|
+| `includeRevoked` | `false` | com `true`, devolve também as concessões já revogadas — é a visão de histórico |
+
+**Response** `200 OK` — lista de `RolePermissionResponse`. **Erros:** `404 Not Found` se o projeto ou o cargo não existir.
+
+```bash
+# só o que vale agora
+curl "http://localhost:8080/projects/$PROJ/roles/$ROLE/routes"
+
+# histórico completo
+curl "http://localhost:8080/projects/$PROJ/roles/$ROLE/routes?includeRevoked=true"
 ```
 
 ---

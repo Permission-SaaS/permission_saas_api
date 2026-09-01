@@ -269,6 +269,14 @@ class ClientTest {
 }
 ```
 
+### Casos que só existem por causa do agregado mutável
+
+`ProjectTest.shouldNotMutateAggregateWhenValidationFails()` é um teste de regressão, não de regra de negócio: ele garante que `Project.update()` roda **todas** as validações antes de qualquer atribuição. Com a persistência JPA o risco não sumiu, mudou de forma: o `ProjectRepositoryAdapter` copia os campos do domínio para uma entidade **gerenciada** pelo `EntityManager`, e o que estiver nela no fim da transação vai para o banco no flush. Uma alteração parcial feita antes da exceção chegaria ao disco na próxima gravação do mesmo agregado.
+
+É a mesma classe de problema descrita no ADR-002 (`@Data` no domínio) — enquanto o agregado for mutável por fora, cada operação que valida vários campos merece um teste de "não alterou nada".
+
+`ProjectUseCasesTest` usa um `FakeProjectRepository` próprio, e não a implementação real: o teste de use case não deve subir contexto Spring nem banco. O fake replica o contrato da porta — inclusive o filtro de `deletedAt` e a ordenação que as consultas derivadas fazem no banco —, e é isso que mantém o teste unitário fiel ao comportamento de produção. Quando uma consulta derivada muda, o fake muda junto; o `ProjectRepositoryAdapterIT` é quem prova que a derivada realmente faz o que o fake finge.
+
 ---
 
 ## Tipo 3 — Teste de Controller (Slice)
@@ -379,6 +387,25 @@ class ClientControllerTest {
 Testa se o adapter JPA está mapeando corretamente os dados para o banco.
 
 **Ferramenta:** `@DataJpaTest` — sobe apenas o contexto JPA com H2 em memória.
+
+> **Sufixo `IT` e o plugin failsafe.** Classes terminadas em `IT` não são executadas pelo surefire (`./mvnw test`) — quem as roda é o **failsafe**, na fase `verify`. Até a etapa 4 o plugin não estava declarado no `pom.xml`, então `ClientRepositoryAdapterIT` existia mas nunca executava. O failsafe entrou no `pom.xml` junto com o `ProjectRepositoryAdapterIT`; a partir daí `./mvnw verify` é o comando que roda a suíte inteira, e é ele que o `Dockerfile` executa no build da imagem.
+
+**O que o `ProjectRepositoryAdapterIT` cobre** (`project/infrastructure/project`), e por que cada caso existe:
+
+| Caso | O que provaria estar quebrado se falhasse |
+|---|---|
+| gravar e recarregar o agregado com cargos e rotas | o `@OneToMany`/`@ManyToOne` e o `cascade = ALL` — sem eles os filhos não chegam ao banco |
+| adicionar um cargo a um projeto já gravado | o `merge` do adapter: ele muta a coleção gerenciada em vez de substituí-la, que é o que `orphanRemoval = true` exige |
+| filtrar por trecho do nome ignorando maiúsculas | a consulta derivada `findByDeletedAtIsNullAndNameContainingIgnoreCaseOrderByNameAsc` |
+| não devolver projetos excluídos logicamente | que o filtro de `deletedAt` está no banco, e que o soft delete **não** apagou a linha |
+| remover em cascata cargos e rotas no `deleteById` | a cascata do `orphanRemoval` + `ON DELETE CASCADE`, usada pelo `PurgeProjectUseCase` |
+| gravar e recarregar a concessão de uma rota a um cargo | o `@ManyToOne` duplo da `RoleRouteJpaEntity` e o `save()` em duas etapas do adapter (ADR-007) |
+| preservar a linha revogada e aceitar nova concessão | o índice único **parcial** e o fato de revogar fechar a linha em vez de apagá-la — é o histórico que a auditoria consome |
+| negar acesso a rota sem concessão | que `Project.allows()` exige `RoleRoute` ativo, e não apenas coexistência de cargo e rota |
+
+> O caso "gravar e recarregar a concessão" foi o que revelou o bug do `save()` em duas etapas: pela API o problema não aparece, porque rota e concessão chegam em requisições separadas e a rota já está no banco. Só um agregado que **nasce** com concessões expõe a rota transiente. É o argumento prático para o teste de integração existir mesmo havendo verificação manual pela coleção Postman.
+
+Os testes geram nomes com `UUID.randomUUID()` porque compartilham o mesmo H2 dentro da execução — cada caso precisa achar só os seus próprios dados.
 
 ```java
 // src/test/java/com/saas/permissions/identity/infrastructure/ClientRepositoryAdapterIT.java
@@ -546,6 +573,9 @@ void shouldRegisterClientSuccessfully() {
 
 # Rodar apenas um método específico
 ./mvnw test -Dtest=RegisterClientUseCaseTest#shouldRegisterClientSuccessfully
+
+# Rodar tudo, incluindo os testes de integração (sufixo IT, plugin failsafe)
+./mvnw verify
 
 # Rodar apenas testes de integração (sufixo IT)
 ./mvnw test -Dtest="*IT"

@@ -48,18 +48,25 @@ project ────────────────────────
   CRUD completo em /projects, mais os sub-recursos /roles e /routes
     ├── Project é o agregado: addRole/addRoute mantêm os invariantes
     │   (maxRoles, duplicidade de cargo, duplicidade de httpMethod+path)
-    ├── exclusão é lógica (deletedAt) — projeto excluído responde 404
-    └── etapas 2-3: InMemoryProjectRepository (Map) semeado pelos .txt;
-        etapa 4: adapter JPA, sem mudança na API
+    ├── exclusão é lógica (deletedAt) — projeto excluído responde 404;
+    │   DELETE /projects/{id}/purge remove em definitivo, em cascata
+    ├── RoleRoute liga cargo a rota com histórico (grantedAt/revokedAt):
+    │   é o que define quais rotas cada cargo pode acessar
+    ├── persistência JPA: Project @OneToMany Role/Route,
+    │   Role @OneToMany RoleRoute @ManyToOne Route
+    └── CheckRouteAccessUseCase responde se um cargo alcança uma rota —
+        é o que o permission consulta pelo RouteAccessChecker
   Define o que pode ser acessado e por quem (Roles/Routes)
 
 permission ──────────────────────────────────────────────  ← núcleo, implementado
   POST /validate-permission → ValidatePermissionUseCase
     └── Chain: ApiKeyValidationHandler → TokenValidationHandler → RoleRouteValidationHandler
-  Valida a ApiKey de verdade (chama billing via use case). Os dois
-  últimos handlers sempre concedem porque dependem de project
-  (Role/Route) e de um 2º fator de auth, nenhum implementado ainda —
-  decisão documentada, ver docs/PATTERNS.md
+  ApiKeyValidationHandler valida a ApiKey contra billing (via use case).
+  RoleRouteValidationHandler checa projeto, rota, cargo e a concessão
+  RoleRoute que liga os dois (via RouteAccessChecker →
+  project.CheckRouteAccessUseCase).
+  TokenValidationHandler segue concedendo sempre: depende de um 2º fator
+  de autenticação, fora do escopo — ver docs/PATTERNS.md
 
 audit ───────────────────────────────────────────────────  ← implementado na disciplina de Spring Boot
   GET /audit-events → FindAuditEventsUseCase (filtros type/projectId/onlyDenied)
@@ -73,24 +80,24 @@ audit ────────────────────────�
 ## Como os módulos se conectam
 
 ```
-identity ──→ billing ──→ permission
+identity ──→ billing ──→ permission ──→ project
                             │
                      PermissionValidatedEvent
                             ↓
                           audit
-
-project (CRUD próprio; ainda não consultado pelo RoleRouteValidationHandler)
 ```
 
 ### Fluxo de negócio completo (implementado nesta entrega)
 
 1. Cliente se cadastra (`identity`)
 2. Assina um plano e recebe uma ApiKey (`billing`)
-3. Qualquer sistema externo chama `POST /validate-permission` com a ApiKey + cargo + rota (`permission`) — a ApiKey é validada de verdade contra `billing`; cargo/rota são aceitos pelo contrato mas ainda não checados contra o projeto real
-4. Cria um projeto com cargos e rotas dentro do limite do plano (`project`) — implementado na disciplina de Spring Boot
+3. Cria um projeto com cargos e rotas dentro do limite do plano e concede a cada cargo as rotas que ele pode acessar (`project`) — implementado na disciplina de Spring Boot
+4. Qualquer sistema externo chama `POST /validate-permission` com ApiKey + `projectId` + cargo + método HTTP + rota (`permission`) — a ApiKey é validada contra `billing` e o par cargo/rota é checado contra o projeto real em `project`
 5. Cada validação de permissão é gravada na trilha de auditoria (`audit`), via evento — implementado na disciplina de Spring Boot
 
-O elo que ainda falta: o `RoleRouteValidationHandler` continua concedendo sempre, em vez de checar o cargo e a rota contra o projeto real. É a próxima evolução do `permission`, prevista para a etapa 4.
+A cadeia está fechada: o `RoleRouteValidationHandler` deixou de conceder sempre e passou a consultar o `project` pela porta `RouteAccessChecker`. Os motivos de negativa que ele devolve, na ordem em que são checados, são `project not found or inactive`, `route not registered in the project`, `route is inactive`, `role not registered in the project`, `role is inactive` e `role has no active grant on this route`.
+
+O último é o que responde à regra de negócio do produto — *o cargo X pode acessar a rota Y no projeto Z?* —, e vem da entidade associativa `RoleRoute`. Antes dela a validação parava em "cargo e rota existem no mesmo projeto", o que liberaria qualquer cargo para qualquer rota.
 
 ---
 
@@ -100,7 +107,7 @@ Um módulo **nunca** acessa o repositório JPA de outro módulo diretamente. A c
 
 | Forma                      | Quando usar                                               | Exemplo                                                                     |
 | -------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Chamada direta de use case | Quando um módulo precisa de dados de outro               | `permission/infrastructure/BillingApiKeyValidator` chama `billing.application.subscription.FindActiveApiKeyByPlainKeyUseCase` para validar a ApiKey (implementado); `CreateProjectUseCase` consultaria o billing para checar os limites do plano (planejado) |
+| Chamada direta de use case | Quando um módulo precisa de dados de outro               | `permission/infrastructure/BillingApiKeyValidator` chama `billing.application.subscription.FindActiveApiKeyByPlainKeyUseCase` para validar a ApiKey; `permission/infrastructure/ProjectRouteAccessChecker` chama `project.application.project.CheckRouteAccessUseCase` para checar cargo × rota (ambos implementados); `CreateProjectUseCase` consultaria o billing para checar os limites do plano (planejado) |
 | Evento de domínio         | Quando um efeito colateral deve acontecer sem acoplamento | `permission/application/ValidatePermissionUseCase` publica `PermissionValidatedEvent` (pacote `permission/domain/event`, anotado `@NamedInterface("events")`); `audit/application/AuditLogListener` consome com `@EventListener` e grava a trilha. Ver `docs/PATTERNS.md` → Observer, inclusive o motivo de ainda não ser `@ApplicationModuleListener` |
 
 ---
@@ -166,6 +173,46 @@ Trocar o banco de dados exige apenas um novo adapter — o use case não muda.
 
 ---
 
+### Mapper de persistência × adapter — quem faz o quê
+
+No `project`, a conversa domínio ↔ JPA está dividida em duas responsabilidades, e a linha entre elas é
+nítida:
+
+| | Onde | Responsabilidade |
+|---|---|---|
+| **Mapper de persistência** | `infrastructure/<submódulo>/XxxJpaMapper` | traduzir **um** objeto entre os dois mundos: `toJpa`, `toDomain` e `copy` (aplicar numa entidade gerenciada só o que pode mudar depois da criação) |
+| **Adapter** | `infrastructure/project/ProjectRepositoryAdapter` | orquestrar o **agregado**: decidir quais filhos são novos, alterados ou removidos, aplicar isso na coleção gerenciada pelo EntityManager e cuidar da transação |
+
+Cada mapper mora no submódulo da sua própria entidade (`RoleJpaMapper` em `infrastructure/role`,
+`RouteJpaMapper` em `infrastructure/route`, `RoleRouteJpaMapper` em `infrastructure/roleroute`), como
+manda o ADR-006. `ProjectJpaMapper` delega aos dois primeiros, e `RoleJpaMapper` delega ao terceiro —
+o grafo de dependência acompanha o grafo do agregado e não tem ciclo.
+
+Em uma frase: **o mapper constrói um objeto a partir de outro; o adapter decide o que construir.**
+
+**Por que a decisão de "novo, alterado ou removido" não desce para o mapper:** ela depende de comparar
+a lista do domínio com a coleção que o Hibernate está gerenciando, e isso só o dono do agregado
+enxerga. Um mapper que recebesse a entidade gerenciada para mexer na coleção deixaria de ser tradutor
+e viraria um segundo orquestrador.
+
+**É o mesmo desenho que a camada `api` já usa na entrada.** `ProjectController` não monta o JSON de
+resposta — quem monta é `ProjectResponseMapper`, e o controller continua sendo o responsável pela
+resposta. `ProjectJpaMapper` é esse mesmo par espelhado na saída para o banco.
+
+> **Só o `project` segue este desenho hoje.** `identity` e `billing` mantêm `toJpa`/`toDomain` dentro
+> do próprio adapter (ver `ClientRepositoryAdapter`, 91 linhas). A diferença é deliberada e tem duas
+> razões: `Client`, `Plan` e `Subscription` não têm coleção filha, então o adapter não incha; e os dois
+> módulos são evidência congelada da disciplina de Clean Code — reescrevê-los agora apagaria o retrato
+> do que foi entregue lá. **Estender adapter + mapper aos demais módulos é trabalho futuro planejado**,
+> não pendência esquecida: quando um deles ganhar um agregado com filhos, ele vem junto.
+
+**Por que esses mappers não implementam `Mapper<I,O>`:** a interface tem um método de um argumento só.
+Aqui `toDomain` precisa do id do pai (é ele que quebra a referência circular no JSON) e o `toJpa` de
+`RoleRoute` precisa da `RouteJpaEntity` já gerenciada. É a mesma exceção, pelo mesmo motivo, que já
+vale para `UpdateProjectMapper` e companhia na camada `api`.
+
+---
+
 ## Tratamento de exceções — GlobalExceptionHandler
 
 Duas camadas de tipos, para conciliar "handler genérico por categoria HTTP" com "exceção legível e concentrada por módulo":
@@ -219,13 +266,13 @@ Formato de resposta único: `shared/api/dto/ErrorResponse` (`status`, `error`, `
 
 **Como aplicar:** qualquer entidade nova com `@GeneratedValue(strategy = GenerationType.UUID)` (ex: futuras entidades de `project`, `permission`, `audit`) deve deixar o Hibernate gerar o `id` — nunca pré-atribuir no domínio. Se um fluxo salvar a mesma entidade mais de uma vez na mesma transação (como a subscription: pending → paid/rejected → active), sempre reatribuir a variável local ao retorno de `save()`.
 
-> ⚠️ **Exceção temporária:** `Project`, `Role` e `Route` violam este ADR de propósito enquanto a persistência é in-memory (etapas 1-3 da disciplina de Spring Boot). Ver ADR-003 para o motivo e o checklist de reversão obrigatório na etapa 4.
+> ⚠️ **Exceção deliberada:** `Project`, `Role` e `Route` continuam gerando o próprio `id` no domínio. O ADR-003 explica por quê isso deixou de conflitar com este ADR quando a persistência JPA entrou na etapa 4. `AuditEvent` segue este ADR: quem atribui o `id` é o Hibernate (`@GeneratedValue(strategy = GenerationType.UUID)` na `AuditEventJpaEntity`).
 
 ---
 
-## ADR-003: `Project`/`Role`/`Route` geram o próprio `id` — desvio temporário do ADR-001
+## ADR-003: `Project`/`Role`/`Route` geram o próprio `id` — desvio do ADR-001
 
-**Status:** aceito para as etapas 1-3 da disciplina de Spring Boot. **Deve ser revertido na etapa 4**, quando entrar o JPA.
+**Status:** aceito nas etapas 1-3 como temporário; **mantido em definitivo na etapa 4** — ver "Resolução na etapa 4" no fim deste ADR.
 
 **Contexto:** `Project.addRole()` e `Project.addRoute()` fecham a referência de volta do filho para o pai (`role.setProjectId(this.id)`) — é o que materializa o relacionamento 1-N exigido pela rubrica. Isso só funciona se `this.id` já existir no momento da chamada.
 
@@ -277,6 +324,136 @@ A opção **A** é a preferida: ela preserva tudo que já está escrito e elimin
 
 ---
 
+### Resolução na etapa 4
+
+O desvio **não foi revertido** — deixou de ser um desvio. O que mudou é que a persistência JPA usa
+classes próprias (`ProjectJpaEntity`, `RoleJpaEntity`, `RouteJpaEntity`), separadas das classes de
+domínio. O conflito descrito acima só existiria se a entidade de domínio *fosse* a entidade JPA.
+
+**Por que o conflito com o ADR-001 não se materializa:**
+
+| Condição do bug original | Situação na etapa 4 |
+|---|---|
+| entidade JPA com `@GeneratedValue` recebendo `id` pré-atribuído | `ProjectJpaEntity` usa `@Id` **atribuído**, sem `@GeneratedValue` — a coluna tem `DEFAULT gen_random_uuid()` só para quem inserir por SQL |
+| `save()` decidindo `persist`/`merge` às cegas | o `ProjectRepositoryAdapter` faz `findById` antes de gravar: se existe, muta a entidade **gerenciada**; se não, monta uma nova |
+| `@Version` disparando `ObjectOptimisticLockingFailureException` | nenhuma das três entidades tem `@Version`, então `merge()` sobre uma linha inexistente resolve para `SELECT` + `INSERT`, não para um `UPDATE` de zero linhas |
+
+**Sobre a opção A (`Persistable`), que este ADR elegia como preferida:** foi implementada, avaliada e
+removida. Ela só economiza o `SELECT` que o `merge()` faz antes de inserir, e cobra por isso um campo
+`@Transient isNew` mais callbacks `@PostLoad`/`@PostPersist` — ou seja, um segundo lugar guardando
+"esta linha já existe?", que o adapter já sabe porque acabou de consultar. Estado duplicado em troca
+de uma consulta: não compensa. Se um dia o custo do `SELECT` extra pesar (inserção em lote, por
+exemplo), `Persistable` volta como otimização localizada na entidade JPA, sem tocar em domínio nem
+use case.
+
+**Consequência para `equals`/`hashCode`:** o risco descrito acima **desapareceu**, porque o item 1 do
+checklist (remover o `@Builder.Default` do `id`) não foi executado — e não precisa ser. O `id` do
+domínio continua nunca sendo nulo e nunca mudando, que são exatamente as duas propriedades de que o
+`@EqualsAndHashCode(of = "id")` depende.
+
+**Checklist original, item a item:**
+
+| Item | Situação |
+|---|---|
+| 1. remover `@Builder.Default` do `id` | ❌ não executado — deliberadamente, ver acima |
+| 2. escolher uma das três opções de `equals`/`hashCode` | ✅ nenhuma foi necessária; a semântica atual segue válida |
+| 3. mapear `@OneToMany(mappedBy, cascade = ALL, orphanRemoval = true)` | ✅ feito na `ProjectJpaEntity` |
+| 4. remover `role.setProjectId(this.id)` de `addRole`/`addRoute` | ❌ mantido de propósito: `Role.projectId`/`Route.projectId` são o que a resposta JSON usa para referenciar o pai sem referência circular. O adapter repreenche esse campo em `toDomain()` a partir de `entity.getProject().getId()`, então o valor nunca diverge do dono real da FK |
+| 5. adapter reatribuindo a variável ao retorno de `save()` | ✅ `save()` devolve `toDomain(jpa.save(entity))` |
+
+> A ressalva sobre herança e igualdade no `audit` também se resolveu: as subclasses de
+> `AuditEventJpaEntity` compartilham a tabela, mas não o `id` — cada linha é um evento distinto, e o
+> `id` é gerado pelo banco, nunca pelo domínio.
+
+---
+
+## ADR-005: sem `Map` in-memory, sem seed e sem loader de arquivo texto no código final
+
+**Status:** aceito na etapa 4 da disciplina de Spring Boot.
+
+**Contexto:** as etapas 1-3 pediam explicitamente um `Map` simulando o banco (itens 7 e 8 da rubrica) e
+classes *loader* lendo arquivos texto (itens 4 e 5). O enunciado da Etapa 4 autoriza a remoção do
+`Map`: *"A implementação com Map não precisa permanecer no código final, pois estará preservada no
+marco etapa-3."*
+
+**Decisão:** removidos do código final o `InMemoryProjectRepository`, o `InMemoryAuditEventRepository`,
+o `ProjectFileLoader`, o `SeedFileException`, o `ProjectSeedRunner` e os arquivos
+`src/main/resources/data/*.txt`. A aplicação passa a depender exclusivamente do banco.
+
+**Motivo:** o seed automático fazia a subida da aplicação depender de três arquivos de classpath e
+gravava dados de demonstração em qualquer ambiente onde a tabela `projects` estivesse vazia —
+inclusive produção. Como a arquitetura final é `Controller → Service → Repository → Banco`, um
+carregador de texto no caminho de inicialização é um segundo dono do estado inicial, sem dono claro.
+
+**Consequência a registrar:** os itens 4, 5, 7 e 8 da rubrica passam a ser evidenciados **apenas pelas
+tags** `etapa-1`, `etapa-2` e `etapa-3`, não pelo `HEAD`. Isso é coerente com a estrutura de avaliação
+por marcos combinada com o professor, mas é uma escolha consciente: quem olhar só a versão final não
+encontra o `Map` nem os loaders.
+
+Para inspecionar essas evidências:
+
+```bash
+git show etapa-3:src/main/java/com/saas/permissions/project/infrastructure/InMemoryProjectRepository.java
+git show etapa-3:src/main/java/com/saas/permissions/project/infrastructure/ProjectFileLoader.java
+git show etapa-3:src/main/resources/data/projects.txt
+```
+
+---
+
+## ADR-006: submódulos por entidade dentro de cada camada do `project`
+
+**Status:** aceito na etapa 4 da disciplina de Spring Boot.
+
+**Contexto:** o `billing` já dividia cada camada em `plan/` e `subscription/`. O `project` tinha essa
+divisão apenas no `domain` (`project/`, `role/`, `route/`); `application`, `infrastructure` e `api`
+eram planos, com 40 classes misturadas.
+
+**Decisão:** replicar a divisão do `domain` nas outras três camadas. Cada camada do `project` tem
+`project/`, `role/` e `route/`, e `ProjectController` deixou de acumular os sub-recursos: `/roles` e
+`/routes` passaram para `RoleController` e `RouteController`, com as mesmas URLs de antes.
+
+**Consequências:**
+
+- As URLs e os contratos não mudaram — a coleção Postman roda igual, sem edição.
+- `RoleJpaEntity`, `RouteJpaEntity` e `ProjectJpaEntity` tiveram de virar `public`: elas se referenciam
+  entre subpacotes. `JpaProjectRepository` e `ProjectRepositoryAdapter` seguem restritos ao subpacote.
+- O `@NamedInterface` do `project` desceu de `project.application` para `project.application.project`,
+  que é o subpacote de onde o `permission` consome o `CheckRouteAccessUseCase`. Subpacote de um pacote
+  anotado **não** herda a anotação no Spring Modulith — por isso a anotação precisa estar exatamente
+  onde está a classe consumida.
+
+---
+
+## ADR-007: `RoleRoute` é entidade associativa com histórico, não tabela de junção
+
+**Status:** aceito na etapa 4 da disciplina de Spring Boot (migration `V9`).
+
+**Contexto:** até então o modelo tinha `Project 1─N Role` e `Project 1─N Route`, sem nada ligando cargo a rota. A validação de permissão conseguia dizer no máximo "cargo e rota existem no mesmo projeto", o que na prática libera qualquer cargo para qualquer rota — o oposto do que um sistema de permissões vende.
+
+**Decisão:** modelar
+
+```
+Project 1 ──── N Role  1 ──── N RoleRoute
+Project 1 ──── N Route 1 ──── N RoleRoute
+```
+
+com `RoleRoute` carregando `grantedAt` e `revokedAt` além das duas FKs.
+
+**Por que não `@ManyToMany` com `@JoinTable`:** o `@ManyToMany` esconde a tabela de junção e não deixa espaço para atributos próprios. Revogar viraria `role.getRoutes().remove(route)` — um `DELETE`, e a informação de que aquele cargo já teve acesso some. Com entidade associativa explícita, revogar é preencher `revokedAt`: a linha permanece e a trilha de auditoria consegue responder **quando** o cargo perdeu o acesso, que é o motivo pelo qual a associação existe.
+
+**Decisões de detalhe:**
+
+| Decisão | Motivo |
+|---|---|
+| índice único **parcial** `WHERE revoked_at IS NULL` | garante no banco no máximo uma concessão ativa por par, e ao mesmo tempo permite empilhar histórico: conceder → revogar → conceder gera duas linhas |
+| `isActive()` derivado de `revokedAt == null`, sem coluna booleana | um booleano mais a data poderiam divergir; com um campo só, o estado é sempre consistente |
+| `@OneToMany` com cascata no `Role`, inverso somente leitura no `Route` | dois caminhos de cascata gravariam a mesma linha; o `Role` é o dono porque é por ele que o agregado navega. A relação `Route 1─N RoleRoute` continua existindo no mapeamento e no banco (FK com `ON DELETE CASCADE`) |
+| `Project` é quem concede e revoga, não `Role` | só o agregado raiz enxerga cargos e rotas ao mesmo tempo, e é isso que permite validar que ambos pertencem ao mesmo projeto antes de criar a concessão |
+
+**Consequência no adapter — `save()` em duas etapas.** `RoleRouteJpaEntity.route` é um `@ManyToOne` **sem cascata**: a rota precisa já estar gerenciada pelo `EntityManager` quando a concessão a referencia. Num projeto recém-criado a rota ainda é transiente, e o Hibernate tentava resolvê-la por id no banco, onde a linha ainda não existia — `ObjectRetrievalFailureException`. Por isso `ProjectRepositoryAdapter.save()` grava primeiro o esqueleto (projeto + cargos + rotas) e só então aplica as concessões, num segundo `save()` dentro da mesma transação. O caso só aparece na primeira gravação de um agregado que já nasce com concessões — foi um teste de integração que o pegou, não o teste manual pela API, onde rota e concessão vêm em requisições separadas.
+
+---
+
 ## ADR-002: `@Data` no domínio quebra o encapsulamento — refactor planejado
 
 **Status:** aceito como dívida técnica consciente. Refactor não agendado (ver "trabalho futuro").
@@ -313,6 +490,8 @@ Entidades sem regra de negócio própria (`Plan`, hoje) podem continuar com `@Da
 
 ### Onde há FK e onde não há
 
+> A migration `V9` acrescentou `role_routes`, com FK para `roles` **e** para `routes`, ambas `ON DELETE CASCADE` — as duas pontas são do mesmo agregado, então valem as mesmas razões de `roles` e `routes`. Ver ADR-007.
+
 | Referência | FK no banco | Por quê |
 |---|---|---|
 | `roles.project_id` → `projects` | ✅ com `ON DELETE CASCADE` | mesmo módulo e mesmo agregado; acompanha o `cascade = ALL` / `orphanRemoval = true` do `@OneToMany` da `ProjectJpaEntity` |
@@ -322,7 +501,9 @@ Entidades sem regra de negócio própria (`Plan`, hoje) podem continuar com `@Da
 
 `subscriptions` (V3) referencia `clients` e `plans` com FK, então a ausência delas aqui é desvio consciente do precedente, por dois motivos distintos:
 
-- **`projects.client_id`** — o seed de `ProjectFileLoader` (`projects.txt`) referencia clientes fictícios que não existem em `clients`; com FK, o carregamento dos arquivos texto (itens 4, 5 e 7 da rubrica) falharia. Além disso, `CreateProjectUseCase` não valida o cliente contra o módulo `identity`: a FK transformaria um `clientId` inexistente em erro 500 do driver, sem exceção de domínio mapeada pelo `GlobalExceptionHandler`. Validar o cliente de verdade exigiria o `identity` expor um `@NamedInterface` de consulta — trabalho futuro; aí a FK passa a fazer sentido.
+- **`projects.client_id`** — `CreateProjectUseCase` não valida o cliente contra o módulo `identity`: a FK transformaria um `clientId` inexistente em erro 500 do driver, sem exceção de domínio mapeada pelo `GlobalExceptionHandler`. Validar o cliente de verdade exigiria o `identity` expor um `@NamedInterface` de consulta — trabalho futuro; aí a FK passa a fazer sentido.
+
+  > Quando esta decisão foi escrita havia um segundo motivo: o seed de `ProjectFileLoader` referenciava clientes fictícios inexistentes em `clients`, e a FK quebraria o carregamento. Esse motivo caiu com a remoção do seed (ADR-005); o primeiro continua valendo sozinho.
 - **`audit_events.project_id`** — a trilha de auditoria precisa sobreviver ao projeto que descreve, e o módulo `audit` não é dono da tabela `projects`. A coluna é **nullable** porque `PermissionValidatedEvent` ainda não carrega o projeto (mesma lacuna do `httpMethod`, achado 3 de 29/08).
 
 ### Herança do `audit`: `SINGLE_TABLE`
@@ -406,47 +587,75 @@ src/main/java/com/saas/permissions/
 │           ├── dto/       # SubscribeToPlanRequest.java, SubscriptionResponse.java
 │           └── mapper/    # SubscribeToPlanMapper.java, SubscriptionResponseMapper.java
 │
-├── project/               # em construção na disciplina de Spring Boot — ver docs/desenvolvimento_de_aplicacoes_java_com_spring_boot/PLAN.md
-│   ├── domain/            # dividido em submódulos project/, role/, route/
+├── project/               # implementado na disciplina de Spring Boot
+│   │                      # cada camada é dividida em project/, role/ e route/, como no billing
+│   ├── domain/
 │   │   ├── project/       # Project.java, ProjectRepository.java (porta)
 │   │   │   └── exception/ # ProjectNotFoundException, PlanLimitExceededException,
 │   │   │                  # InvalidProjectDataException, ProjectAlready{Active,Inactive,Deleted}Exception
-│   │   ├── role/          # Role.java + exception/RoleAlreadyExistsException
-│   │   └── route/         # Route.java + exception/RouteAlreadyExistsException
-│   ├── application/       # Create/Update/Delete/FindById/FindAll/Search ProjectUseCase,
-│   │   │                  # AddRoleToProjectUseCase, AddRouteToProjectUseCase,
-│   │   │                  # FindProjectRoutesUseCase
-│   │   └── command/       # CreateProjectCommand, UpdateProjectCommand,
-│   │                      # AddRoleToProjectCommand, AddRouteToProjectCommand, SearchProjectsQuery
-│   ├── infrastructure/    # InMemoryProjectRepository (Map, etapas 2-3), ProjectFileLoader,
-│   │                      # ProjectDemoRunner, SeedFileException
-│   └── api/               # ProjectController.java
-│       ├── dto/           # Create/Update/Search ProjectRequest, AddRole/AddRouteRequest,
-│       │                  # ProjectResponse, RoleResponse, RouteResponse
-│       └── mapper/        # CreateProjectMapper, UpdateProjectMapper, SearchProjectsMapper,
-│                          # AddRoleToProjectMapper, AddRouteToProjectMapper,
-│                          # ProjectResponseMapper, RoleResponseMapper, RouteResponseMapper
+│   │   ├── role/          # Role.java + exception/RoleAlreadyExistsException, RoleNotFoundException
+│   │   ├── route/         # Route.java + exception/RouteAlreadyExistsException, RouteNotFoundException
+│   │   └── roleroute/     # RoleRoute.java (entidade associativa com histórico)
+│   │       └── exception/ # RouteAccessAlreadyGranted/AlreadyRevoked/NotFoundException
+│   ├── application/
+│   │   ├── project/       # Create/Update/Delete/Purge/FindById/FindAll/Search ProjectUseCase,
+│   │   │   │              # CheckRouteAccessUseCase, RouteAccessResult,
+│   │   │   │              # package-info.java com @NamedInterface("application.project")
+│   │   │   └── command/   # CreateProjectCommand, UpdateProjectCommand, SearchProjectsQuery
+│   │   ├── role/          # AddRoleToProjectUseCase
+│   │   │   └── command/   # AddRoleToProjectCommand
+│   │   ├── route/         # AddRouteToProjectUseCase, FindProjectRoutesUseCase
+│   │   │   └── command/   # AddRouteToProjectCommand
+│   │   └── roleroute/     # GrantRouteToRoleUseCase, RevokeRouteFromRoleUseCase,
+│   │                      # FindRolePermissionsUseCase
+│   ├── infrastructure/
+│   │   ├── project/       # ProjectJpaEntity (@OneToMany roles/routes), ProjectJpaMapper,
+│   │   │                  # JpaProjectRepository, ProjectRepositoryAdapter, ProjectDemoRunner
+│   │   ├── role/          # RoleJpaEntity (@ManyToOne project, @OneToMany permissions), RoleJpaMapper
+│   │   ├── route/         # RouteJpaEntity (@ManyToOne project, @OneToMany permissions inverso),
+│   │   │                  # RouteJpaMapper
+│   │   └── roleroute/     # RoleRouteJpaEntity (@ManyToOne role + @ManyToOne route), RoleRouteJpaMapper
+│   └── api/
+│       ├── project/       # ProjectController.java
+│       │   ├── dto/       # Create/Update/Search ProjectRequest, ProjectResponse
+│       │   └── mapper/    # CreateProjectMapper, UpdateProjectMapper, SearchProjectsMapper,
+│       │                  # ProjectResponseMapper
+│       ├── role/          # RoleController.java
+│       │   ├── dto/       # AddRoleRequest, RoleResponse
+│       │   └── mapper/    # AddRoleToProjectMapper, RoleResponseMapper
+│       ├── route/         # RouteController.java
+│       │   ├── dto/       # AddRouteRequest, RouteResponse
+│       │   └── mapper/    # AddRouteToProjectMapper, RouteResponseMapper
+│       └── roleroute/     # RoleRouteController.java
+│           ├── dto/       # RolePermissionResponse
+│           └── mapper/    # RolePermissionResponseMapper
 │
 ├── permission/            # implementado — Chain of Responsibility (docs/PATTERNS.md)
 │   ├── domain/            # PermissionValidationHandler.java (Handler abstrato),
 │   │                      # ApiKeyValidationHandler, TokenValidationHandler,
 │   │                      # RoleRouteValidationHandler (ConcreteHandlers),
-│   │                      # ApiKeyValidator.java (porta), dto/PermissionCheckRequest.java,
-│   │                      # dto/PermissionCheckResult.java
+│   │                      # ApiKeyValidator.java e RouteAccessChecker.java (portas),
+│   │                      # dto/PermissionCheckRequest.java, dto/PermissionCheckResult.java
+│   │   └── event/         # PermissionValidatedEvent.java + package-info @NamedInterface("events")
 │   ├── application/       # ValidatePermissionUseCase.java
-│   ├── infrastructure/    # BillingApiKeyValidator.java (implementa ApiKeyValidator
-│   │                      # chamando billing.FindActiveApiKeyByPlainKeyUseCase)
+│   ├── infrastructure/    # BillingApiKeyValidator.java (implementa ApiKeyValidator chamando
+│   │                      # billing.FindActiveApiKeyByPlainKeyUseCase),
+│   │                      # ProjectRouteAccessChecker.java (implementa RouteAccessChecker
+│   │                      # chamando project.CheckRouteAccessUseCase)
 │   └── api/               # PermissionController.java
 │       ├── dto/           # ValidatePermissionRequest.java, PermissionValidationResponse.java
 │       └── mapper/        # ValidatePermissionMapper.java, PermissionValidationResponseMapper.java
 │
-└── audit/                 # em construção na disciplina de Spring Boot — ver docs/desenvolvimento_de_aplicacoes_java_com_spring_boot/PLAN.md
+└── audit/                 # implementado na disciplina de Spring Boot
     ├── domain/            # AuditEvent.java (abstrata), PermissionCheckEvent.java,
     │                      # ProjectLifecycleEvent.java, LifecycleAction.java,
-    │                      # AuditEventRepository.java (porta)
+    │                      # AuditEventRepository.java e AuditEventJournal.java (portas)
     ├── application/       # AuditLogListener.java (Observer), FindAuditEventsUseCase.java
     │   └── command/       # AuditEventQuery.java
-    ├── infrastructure/    # InMemoryAuditEventRepository (Map, etapas 2-3), AuditDemoRunner
+    ├── infrastructure/    # AuditEventJpaEntity (SINGLE_TABLE) + PermissionCheckEventJpaEntity
+    │                      # + ProjectLifecycleEventJpaEntity, JpaAuditEventRepository,
+    │                      # AuditEventRepositoryAdapter, AuditEventFileWriter, AuditDemoRunner,
+    │                      # UnsupportedAuditEventException
     └── api/               # AuditEventController.java
         ├── dto/           # SearchAuditEventsRequest.java, AuditEventResponse.java
         └── mapper/        # SearchAuditEventsMapper.java, AuditEventResponseMapper.java
