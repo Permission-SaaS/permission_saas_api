@@ -3,7 +3,7 @@ WORKDIR /app
 COPY pom.xml .
 RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline -q
 COPY src ./src
-RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests -q
+RUN --mount=type=cache,target=/root/.m2 mvn clean package -q
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
