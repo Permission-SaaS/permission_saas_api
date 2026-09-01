@@ -1,6 +1,5 @@
 package com.saas.permissions.audit.application;
 
-import java.util.Comparator;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -19,12 +18,18 @@ public class FindAuditEventsUseCase {
     private final AuditEventRepository auditEventRepository;
 
     public List<AuditEvent> execute(AuditEventQuery query) {
-        return auditEventRepository.findAll().stream()
+        return findByProject(query).stream()
                 .filter(event -> matchesType(event, query.type()))
-                .filter(event -> matchesProject(event, query))
                 .filter(event -> matchesDenied(event, query.onlyDenied()))
-                .sorted(Comparator.comparing(AuditEvent::getOccurredAt).reversed())
                 .toList();
+    }
+
+    private List<AuditEvent> findByProject(AuditEventQuery query) {
+        if (query.projectId() == null) {
+            return auditEventRepository.findAll();
+        }
+
+        return auditEventRepository.findAllByProjectId(query.projectId());
     }
 
     private boolean matchesType(AuditEvent event, String type) {
@@ -33,14 +38,6 @@ public class FindAuditEventsUseCase {
         }
 
         return event.type().equalsIgnoreCase(type);
-    }
-
-    private boolean matchesProject(AuditEvent event, AuditEventQuery query) {
-        if (query.projectId() == null) {
-            return true;
-        }
-
-        return query.projectId().equals(event.getProjectId());
     }
 
     private boolean matchesDenied(AuditEvent event, Boolean onlyDenied) {
