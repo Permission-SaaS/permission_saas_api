@@ -3,6 +3,7 @@ package com.saas.permissions.project.domain.project;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.saas.permissions.project.domain.project.exception.InvalidProjectDataException;
@@ -12,8 +13,13 @@ import com.saas.permissions.project.domain.project.exception.ProjectAlreadyDelet
 import com.saas.permissions.project.domain.project.exception.ProjectAlreadyInactiveException;
 import com.saas.permissions.project.domain.role.Role;
 import com.saas.permissions.project.domain.role.exception.RoleAlreadyExistsException;
+import com.saas.permissions.project.domain.role.exception.RoleNotFoundException;
+import com.saas.permissions.project.domain.roleroute.RoleRoute;
+import com.saas.permissions.project.domain.roleroute.exception.RouteAccessAlreadyGrantedException;
+import com.saas.permissions.project.domain.roleroute.exception.RouteAccessNotFoundException;
 import com.saas.permissions.project.domain.route.Route;
 import com.saas.permissions.project.domain.route.exception.RouteAlreadyExistsException;
+import com.saas.permissions.project.domain.route.exception.RouteNotFoundException;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -85,6 +91,71 @@ public class Project {
         role.setProjectId(this.id);
 
         this.updatedAt = OffsetDateTime.now();
+    }
+
+    public RoleRoute grantRouteToRole(UUID roleId, UUID routeId) {
+        ensureNotDeleted();
+
+        Role role = requireRole(roleId);
+        requireRoute(routeId);
+
+        if (role.hasActiveAccessTo(routeId)) {
+            throw new RouteAccessAlreadyGrantedException(roleId, routeId);
+        }
+
+        RoleRoute permission = RoleRoute.builder()
+                .roleId(roleId)
+                .routeId(routeId)
+                .build();
+
+        role.getPermissions().add(permission);
+
+        this.updatedAt = OffsetDateTime.now();
+
+        return permission;
+    }
+
+    public RoleRoute revokeRouteFromRole(UUID roleId, UUID routeId) {
+        ensureNotDeleted();
+
+        Role role = requireRole(roleId);
+        requireRoute(routeId);
+
+        RoleRoute permission = role.activeAccessTo(routeId)
+                .orElseThrow(() -> new RouteAccessNotFoundException(roleId, routeId));
+
+        permission.revoke();
+
+        this.updatedAt = OffsetDateTime.now();
+
+        return permission;
+    }
+
+    public boolean allows(UUID roleId, UUID routeId) {
+        return findRole(roleId)
+                .filter(Role::isActive)
+                .map(role -> role.hasActiveAccessTo(routeId))
+                .orElse(false);
+    }
+
+    public Optional<Role> findRole(UUID roleId) {
+        return this.roles.stream()
+                .filter(role -> role.getId().equals(roleId))
+                .findFirst();
+    }
+
+    public Optional<Route> findRoute(UUID routeId) {
+        return this.routes.stream()
+                .filter(route -> route.getId().equals(routeId))
+                .findFirst();
+    }
+
+    private Role requireRole(UUID roleId) {
+        return findRole(roleId).orElseThrow(() -> new RoleNotFoundException(roleId));
+    }
+
+    private Route requireRoute(UUID routeId) {
+        return findRoute(routeId).orElseThrow(() -> new RouteNotFoundException(routeId));
     }
 
     public void deactivate() {
