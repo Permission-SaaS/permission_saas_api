@@ -195,7 +195,14 @@ curl -X POST http://localhost:8080/subscriptions \
 
 ### `POST /validate-permission`
 
-Valida se uma ApiKey pode acessar uma rota (`httpMethod` + `route`) de um projeto com um determinado cargo. Roda a `Chain of Responsibility` descrita em `docs/PATTERNS.md`: `ApiKeyValidationHandler` → `TokenValidationHandler` → `RoleRouteValidationHandler`. A chain para no primeiro handler que negar.
+Valida se uma ApiKey pode acessar uma rota (`httpMethod` + `route`) de um projeto com um determinado cargo.
+
+> **Nota de contrato.** O nome deste recurso destoa do resto da API, que é organizada por
+> substantivo no plural (`/clients`, `/plans`, `/projects`). O formato coerente seria
+> `POST /permissions/validate`. A renomeação está registrada como trabalho futuro e **não foi
+> aplicada de propósito**: esta URL é citada como evidência entregue nos documentos congelados
+> das duas disciplinas anteriores, que não podem ser editados. Trocá-la agora tornaria aquela
+> evidência incorreta sem render nada em troca. Roda a `Chain of Responsibility` descrita em `docs/PATTERNS.md`: `ApiKeyValidationHandler` → `TokenValidationHandler` → `RoleRouteValidationHandler`. A chain para no primeiro handler que negar.
 
 **Request** (`ValidatePermissionRequest`):
 ```json
