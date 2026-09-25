@@ -531,6 +531,56 @@ Dois índices são parciais, cobrindo exatamente os filtros que os use cases apl
 
 ---
 
+## ADR-008: projetos irmãos no mesmo repositório, não multi-módulo Maven
+
+**Status:** aceito na etapa 1 da disciplina de microsserviços.
+
+**Contexto:** a disciplina exige extrair o `audit` para uma aplicação Spring Boot independente e,
+depois, acrescentar um Config Server. Passam a existir três `pom.xml` onde havia um. O caminho
+idiomático do Maven seria converter a raiz em um `pom` agregador (`<packaging>pom</packaging>`) com
+`app/`, `audit-service/` e `config-server/` como módulos.
+
+Há uma restrição que vem de fora do Maven: este repositório é a evidência avaliada de três
+disciplinas da Pós-Graduação, e as tags `etapa-1` … `etapa-4` apontam para o código como ele foi
+entregue em 31/08/2026.
+
+**Decisão:** manter a aplicação principal na raiz, com o `pom.xml` e o `src/` atuais intocados, e
+acrescentar os projetos novos como pastas irmãs, cada uma com seu próprio `pom.xml` e seu próprio
+`Dockerfile`:
+
+```
+permission_saas/
+├── src/ pom.xml Dockerfile          aplicação principal
+├── audit-service/                   serviço extraído
+├── config-server/                   Spring Cloud Config Server
+└── docker-compose.yml               orquestra todos
+```
+
+Cada projeto compila sozinho (`./mvnw` dentro da pasta) e o `docker-compose.yml` da raiz é o que
+integra os três.
+
+**Alternativa descartada — `pom` agregador na raiz.** Converter exigiria mover `src/` inteiro para
+`app/src/`. O diff da entrega passaria a ser dominado por milhares de linhas de arquivo movido, e
+qualquer `git diff etapa-4..arq-etapa-2` deixaria de mostrar o que esta disciplina construiu.
+Reescreveria a evidência das disciplinas anteriores em vez de acrescentar à ela.
+
+**Consequências:**
+
+- **Não há build único.** Compilar tudo é rodar `./mvnw` em cada pasta, ou `docker compose build`.
+  Aceitável porque os projetos não compartilham código-fonte — o que é comum entre eles (DTOs de
+  contrato, `Mapper`, `GlobalExceptionHandler`) é copiado deliberadamente, não extraído para uma
+  biblioteca compartilhada.
+- **Duplicação consciente.** Uma lib compartilhada voltaria a acoplar os dois deploys: mudar o
+  contrato exigiria versionar e publicar a lib antes de subir qualquer um dos lados. Para dois
+  serviços com um contrato pequeno, copiar custa menos do que acoplar.
+- O `verifiesModularStructure()` do Spring Modulith continua valendo só para a aplicação principal.
+  A fronteira entre ela e o `audit-service` deixa de ser verificada por teste e passa a ser
+  verificada pela rede: não há como importar o pacote do outro.
+- Se uma disciplina futura precisar de build único, a conversão continua possível — e aí o custo do
+  diff recai sobre aquela entrega, não sobre esta.
+
+---
+
 ## Segurança do Swagger UI
 
 `SecurityConfig` deixa todo o restante da API com `permitAll()` (autenticação real de cliente é trabalho futuro, ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`), mas `/swagger-ui/**` e `/v3/api-docs/**` exigem HTTP Basic com um usuário fixo em memória (`InMemoryUserDetailsManager`), configurado via `app.swagger.username` / `app.swagger.password` (env vars `SWAGGER_USERNAME` / `SWAGGER_PASSWORD`, default `admin` / `admin123`). `/actuator/**` continua liberado.
