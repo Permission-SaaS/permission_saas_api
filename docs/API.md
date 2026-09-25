@@ -116,9 +116,9 @@ Cadastra um `Plan`.
 
 **Request** (`RegisterPlanRequest`): `name` (obrigatório), `description`, `maxProjects`, `maxUsersPerProject`, `price` (obrigatório, positivo).
 
-**Response** `200 OK` (`PlanResponse`).
+**Response** `201 Created` (`PlanResponse`).
 
-> ⚠️ Este é o único endpoint de criação do sistema que devolve **200** em vez de **201 Created** — os demais (`POST /clients/register`, `POST /subscriptions`, `POST /projects`) devolvem 201. Divergência conhecida, herdada da disciplina anterior; a coleção Postman assere 200 para refletir o comportamento real.
+> Até a disciplina de Spring Boot este era o único endpoint de criação que devolvia **200**, e a divergência estava registrada aqui como conhecida. Corrigida na disciplina de microsserviços: agora os quatro endpoints de criação (`POST /clients/register`, `POST /subscriptions`, `POST /projects` e este) devolvem **201 Created**, e a coleção Postman assere 201.
 
 **Erros:** `500 Internal Server Error` se o `name` já existir — a constraint `uq_plans_name` estoura no banco e não há exceção de domínio correspondente, então cai no handler genérico. O correto seria `409 Conflict` via uma `PlanNameAlreadyInUseException`; registrado como pendência.
 
