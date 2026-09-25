@@ -4,12 +4,14 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.saas.permissions.shared.api.dto.ErrorResponse;
 import com.saas.permissions.shared.domain.exception.BusinessRuleException;
+import com.saas.permissions.shared.domain.exception.InvalidDataException;
 import com.saas.permissions.shared.domain.exception.ResourceNotFoundException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +36,16 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .collect(Collectors.joining("; "));
         return build(HttpStatus.BAD_REQUEST, message);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        return build(HttpStatus.BAD_REQUEST, "Malformed request body");
+    }
+
+    @ExceptionHandler(InvalidDataException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidData(InvalidDataException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     @ExceptionHandler(Exception.class)

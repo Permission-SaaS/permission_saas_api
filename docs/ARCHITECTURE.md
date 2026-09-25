@@ -140,7 +140,7 @@ A interface `Mapper<I, O>` fica em `shared/domain/` e é reutilizada por todos o
 
 **Campo nulo significa ausência de critério.** Vale para os filtros de leitura — `SearchProjectsRequest`, `SearchProjectsQuery`, `SearchAuditEventsRequest` e `AuditEventQuery`: nulo quer dizer "não filtrar por este critério", o que permite a mesma consulta servir a chamadas com e sem filtro. Em `UpdateProjectRequest` a mesma convenção significa "manter o valor atual", por ser uma alteração parcial.
 
-**Por que `UpdateProjectRequest` não tem `@NotBlank`.** O domínio precisa distinguir "não informado" (nulo, mantém) de "informado vazio" (string em branco, é erro). Um `@NotBlank` no DTO recusaria os dois casos na borda e tiraria do agregado a decisão — `Project.update()` é quem lança `InvalidProjectDataException`.
+**Por que `UpdateProjectRequest` não tem `@NotBlank`.** O domínio precisa distinguir "não informado" (nulo, mantém) de "informado vazio" (string em branco, é erro). Um `@NotBlank` no DTO recusaria os dois casos na borda e tiraria do agregado a decisão — `Project.update()` é quem lança `InvalidProjectDataException` — que responde **400**, e não 409, desde que passou a herdar `InvalidDataException`. O `docs/API.md` já descrevia esse endpoint como "`400` em dados inválidos": a mudança alinhou o código ao contrato que estava documentado.
 
 **Nem todo mapper implementa `Mapper<I, O>`.** A interface tem uma entrada só, e `UpdateProjectMapper`, `AddRoleToProjectMapper` e `AddRouteToProjectMapper` montam o command a partir de duas origens: o identificador vem do caminho e o restante do corpo. Eles ficam fora da interface, mas continuam em `api/mapper/` — o controller segue apenas repassando dados, sem montar command inline. Os demais (`CreateProjectMapper`, `SearchProjectsMapper`, `SearchAuditEventsMapper` e todos os de resposta) implementam `Mapper<I, O>` normalmente.
 
@@ -221,6 +221,7 @@ Duas camadas de tipos, para conciliar "handler genérico por categoria HTTP" com
    - `DomainException` — superclasse abstrata de tudo.
    - `ResourceNotFoundException extends DomainException` → `404`.
    - `BusinessRuleException extends DomainException` → `409`.
+   - `InvalidDataException extends DomainException` → `400` (acrescentada na disciplina de microsserviços).
 2. **Exceções concretas por módulo**, uma para cada erro de negócio real do sistema, cada uma já carregando sua própria mensagem — quem lança nunca monta uma `String` na hora do `throw`:
 
    | Exceção | Módulo/pacote | Extends | Uso |
@@ -236,6 +237,13 @@ Duas camadas de tipos, para conciliar "handler genérico por categoria HTTP" com
    | `ProjectAlreadyInactiveException` | `project/domain/project/exception/` | `BusinessRuleException` | `Project.deactivate` — recebe o nome do projeto |
    | `ProjectAlreadyActiveException` | `project/domain/project/exception/` | `BusinessRuleException` | `Project.activate` — recebe o nome do projeto |
    | `ProjectAlreadyDeletedException` | `project/domain/project/exception/` | `BusinessRuleException` | `Project.delete` — recebe o nome do projeto |
+   | `InvalidProjectDataException` | `project/domain/project/exception/` | `InvalidDataException` | `Project.update` — recebe o campo e o motivo (`"must not be blank"`, `"must be greater than zero"`) |
+   | `RoleNotFoundException` | `project/domain/role/exception/` | `ResourceNotFoundException` | busca de cargo dentro do projeto |
+   | `RouteNotFoundException` | `project/domain/route/exception/` | `ResourceNotFoundException` | busca de rota dentro do projeto |
+   | `RouteAccessNotFoundException` | `project/domain/roleroute/exception/` | `ResourceNotFoundException` | revogação de concessão inexistente |
+   | `RouteAccessAlreadyGrantedException` | `project/domain/roleroute/exception/` | `BusinessRuleException` | `Role.grantAccessTo` |
+   | `RouteAccessAlreadyRevokedException` | `project/domain/roleroute/exception/` | `BusinessRuleException` | `Role.revokeAccessTo` |
+   | `ProjectNotFoundException` | `project/domain/project/exception/` | `ResourceNotFoundException` | `FindProjectByIdUseCase` |
 
    **Por que não `IllegalStateException`:** transição de estado inválida é regra de negócio, não erro de programação. Uma `IllegalStateException` cai no handler genérico e vira **500** — o cliente recebe "erro interno" quando na verdade fez um pedido inválido. Herdando `BusinessRuleException`, a mesma situação vira **409** com mensagem legível, sem tocar no `GlobalExceptionHandler`.
 
@@ -245,8 +253,16 @@ Duas camadas de tipos, para conciliar "handler genérico por categoria HTTP" com
 
 - `ResourceNotFoundException` (e qualquer subclasse) → `404 Not Found`
 - `BusinessRuleException` (e qualquer subclasse) → `409 Conflict`
+- `InvalidDataException` (e qualquer subclasse) → `400 Bad Request`
 - `MethodArgumentNotValidException` (falha de `@Valid` nos DTOs de request) → `400 Bad Request`, mensagem concatena `campo: motivo` de cada erro de validação
+- `HttpMessageNotReadableException` (corpo ilegível: JSON malformado, UUID que não converte) → `400 Bad Request` com mensagem fixa `"Malformed request body"`. **Não** devolve `ex.getMessage()`: o Jackson expõe nome de classe, campo e posição no JSON, que é exatamente o detalhe interno que a Etapa 1 manda não vazar
 - Qualquer outra `Exception` não mapeada → `500 Internal Server Error`, logada via `@Slf4j` (nunca vaza stacktrace pro cliente)
+
+**Por que `HttpMessageNotReadableException` precisa de handler próprio.** `GlobalExceptionHandler` não estende `ResponseEntityExceptionHandler`, e o `@ExceptionHandler(Exception.class)` deste advice é resolvido antes do `DefaultHandlerExceptionResolver` do Spring. Sem a entrada específica, todo corpo malformado caía no catch-all e voltava **500**. Verificado em 25/09/2026: `{"projectId":"nao-sou-uuid"}` e `{"apiKey": ` agora respondem `400`.
+
+**Ordem dos handlers não importa.** `ResourceNotFoundException`, `BusinessRuleException` e `InvalidDataException` são irmãs sob `DomainException`, sem sobreposição; o Spring escolhe o `@ExceptionHandler` mais próximo na hierarquia da exceção lançada. Uma exceção concreta só precisa de handler próprio se divergir da categoria que herda.
+
+**Consideração registrada — `402` para pagamento recusado.** `PaymentDeclinedException` herda `BusinessRuleException` e portanto responde `409`, junto com os conflitos de estado. Só um dos dois é conflito de verdade: pagamento recusado é operação externa que falhou, e o código próprio seria `402 Payment Required`. Separar exigiria um `@RestControllerAdvice` só do `billing` — `shared` não pode importar de um módulo de negócio sem inverter a dependência e quebrar o `verifiesModularStructure()`. Custo maior que o ganho nesta entrega; o raciocínio completo está em `docs/API.md`, na seção do `POST /subscriptions`.
 
 Formato de resposta único: `shared/api/dto/ErrorResponse` (`status`, `error`, `message`, `timestamp`).
 
