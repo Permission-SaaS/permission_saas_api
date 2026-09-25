@@ -11,11 +11,16 @@ import com.saas.permissions.permission.api.mapper.PermissionValidationResponseMa
 import com.saas.permissions.permission.api.mapper.ValidatePermissionMapper;
 import com.saas.permissions.permission.application.ValidatePermissionUseCase;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequiredArgsConstructor
+@Tag(name = "Permission", description = "Validação de permissões")
 public class PermissionController {
 
     private final ValidatePermissionUseCase validatePermissionUseCase;
@@ -23,6 +28,12 @@ public class PermissionController {
     private final PermissionValidationResponseMapper permissionValidationResponseMapper;
 
     @PostMapping("/validate-permission")
+    @Operation(summary = "Valida se o usuario tem permissao para realizar determinada acao")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Validação executada. O campo granted diz se o acesso foi concedido; reason explica a negação."),
+            @ApiResponse(responseCode = "400", description = "Requisicao invalida"),
+            @ApiResponse(responseCode = "500", description = "Erro interno do servidor")
+    })
     public ResponseEntity<PermissionValidationResponse> validate(
             @RequestBody @Valid ValidatePermissionRequest request) {
         var result = validatePermissionUseCase.execute(validatePermissionMapper.map(request));
