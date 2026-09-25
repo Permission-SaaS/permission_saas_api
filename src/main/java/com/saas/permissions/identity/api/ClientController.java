@@ -67,6 +67,7 @@ public class ClientController {
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Cliente registrado com sucesso"),
             @ApiResponse(responseCode = "400", description = "Requisição inválida"),
+            @ApiResponse(responseCode = "409", description = "Cliente já existe com o mesmo e-mail"),
             @ApiResponse(responseCode = "500", description = "Erro interno do servidor")
     })
     public ResponseEntity<ClientResponse> register(@RequestBody @Valid RegisterClientRequest request) {

@@ -181,6 +181,31 @@ Assina um `Plan` para um `Client` já cadastrado. Cobra via `PaymentGateway` (si
 
 **Erros:** `404 Not Found` se `clientId` ou `planId` não existirem (`FindClientByIdUseCase` → `ClientNotFoundException`, `FindPlanByIdUseCase` → `PlanNotFoundException`); `409 Conflict` se o pagamento for recusado — marca a `Subscription` como `canceled`/rejeitada e lança `PaymentDeclinedException` (sem gerar `ApiKey`); `409 Conflict` se o `Client` já possuir uma `Subscription` `active` (dentro do prazo) para o **mesmo** `planId` (`ActiveSubscriptionExistsException`, mensagem `"Client already has an active subscription to this plan..."`).
 
+> **Pendência — `402 Payment Required` para pagamento recusado.** Hoje os dois conflitos deste
+> endpoint devolvem **409**, porque `ActiveSubscriptionExistsException` e `PaymentDeclinedException`
+> estendem a mesma `BusinessRuleException` e o `GlobalExceptionHandler` mapeia a família inteira
+> para `409 Conflict`.
+>
+> Só um dos dois é realmente um conflito. `409` significa que a requisição conflita com o **estado
+> atual do recurso** — é exatamente o caso de "já existe assinatura ativa para este plano". Um
+> pagamento recusado não conflita com estado nenhum: é uma operação externa que falhou, e o código
+> que existe para isso é `402 Payment Required`.
+>
+> A correção é um handler específico, que passa na frente do handler da família por ser mais
+> específico:
+>
+> ```java
+> @ExceptionHandler(PaymentDeclinedException.class)
+> ResponseEntity<ErrorResponse> handlePaymentDeclined(PaymentDeclinedException ex) {
+>     return build(HttpStatus.PAYMENT_REQUIRED, ex.getMessage());
+> }
+> ```
+>
+> Alcance da mudança: `shared/api/GlobalExceptionHandler.java`, o parágrafo de erros acima e o
+> `@ApiResponse` do `SubscriptionController` (o exemplo "Pagamento recusado" sairia do 409 para um
+> 402 próprio). A coleção Postman **não** é afetada — nenhum request dela exercita pagamento
+> recusado nem assinatura duplicada.
+
 **Troca de plano:** se o `Client` já possuir uma `Subscription` `active` para um plano **diferente**, ela é automaticamente marcada `canceled` (e sua `ApiKey` revogada) antes de ativar a nova — ver invariante em `docs/DOMAIN.md`.
 
 ```bash
