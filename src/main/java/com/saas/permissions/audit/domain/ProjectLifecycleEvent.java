@@ -17,6 +17,8 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 public class ProjectLifecycleEvent extends AuditEvent {
 
+    public static final String TYPE = "PROJECT_LIFECYCLE";
+
     private LifecycleAction action;
 
     private String projectName;
@@ -31,6 +33,6 @@ public class ProjectLifecycleEvent extends AuditEvent {
 
     @Override
     public String type() {
-        return "PROJECT_LIFECYCLE";
+        return TYPE;
     }
 }

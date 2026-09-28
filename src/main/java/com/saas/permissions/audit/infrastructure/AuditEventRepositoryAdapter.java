@@ -1,5 +1,6 @@
 package com.saas.permissions.audit.infrastructure;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,23 +19,24 @@ import lombok.RequiredArgsConstructor;
 @Transactional
 public class AuditEventRepositoryAdapter implements AuditEventRepository {
 
-    private final JpaAuditEventRepository jpa;
+    private final JpaAuditEventRepository jpaAuditEventRepository;
+    private final JpaPermissionCheckEventRepository permissionCheckEventRepository;
 
     @Override
     public AuditEvent save(AuditEvent event) {
-        return toDomain(jpa.save(toJpa(event)));
+        return toDomain(jpaAuditEventRepository.save(toJpa(event)));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<AuditEvent> findAll() {
-        return jpa.findAllByOrderByOccurredAtDesc().stream().map(this::toDomain).toList();
+    public List<AuditEvent> search(String type, UUID projectId, OffsetDateTime from, OffsetDateTime to) {
+        return jpaAuditEventRepository.search(type, projectId, from, to).stream().map(this::toDomain).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<AuditEvent> findAllByProjectId(UUID projectId) {
-        return jpa.findByProjectIdOrderByOccurredAtDesc(projectId).stream().map(this::toDomain).toList();
+    public List<AuditEvent> searchDenied(UUID projectId, OffsetDateTime from, OffsetDateTime to) {
+        return permissionCheckEventRepository.searchDenied(projectId, from, to).stream().map(this::toDomain).toList();
     }
 
     private AuditEventJpaEntity toJpa(AuditEvent event) {

@@ -11,7 +11,7 @@ import com.saas.permissions.audit.api.dto.AuditEventResponse;
 import com.saas.permissions.audit.api.dto.SearchAuditEventsRequest;
 import com.saas.permissions.audit.api.mapper.AuditEventResponseMapper;
 import com.saas.permissions.audit.api.mapper.SearchAuditEventsMapper;
-import com.saas.permissions.audit.application.FindAuditEventsUseCase;
+import com.saas.permissions.audit.application.SearchAuditEventsUseCase;
 import com.saas.permissions.audit.domain.AuditEvent;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,7 +26,7 @@ import lombok.RequiredArgsConstructor;
 @Tag(name = "Audit", description = "Trilha de auditoria das validacoes de permissao")
 public class AuditEventController {
 
-    private final FindAuditEventsUseCase findAuditEventsUseCase;
+    private final SearchAuditEventsUseCase searchAuditEventsUseCase;
 
     private final SearchAuditEventsMapper searchAuditEventsMapper;
 
@@ -37,7 +37,7 @@ public class AuditEventController {
     @ApiResponse(responseCode = "200", description = "Lista devolvida com sucesso")
     public ResponseEntity<List<AuditEventResponse>> searchAuditEvents(@Valid SearchAuditEventsRequest request) {
 
-        List<AuditEvent> events = findAuditEventsUseCase.execute(searchAuditEventsMapper.map(request));
+        List<AuditEvent> events = searchAuditEventsUseCase.execute(searchAuditEventsMapper.map(request));
 
         return ResponseEntity.ok(events.stream().map(auditEventResponseMapper::map).toList());
     }

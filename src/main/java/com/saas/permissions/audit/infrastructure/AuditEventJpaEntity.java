@@ -39,4 +39,7 @@ abstract class AuditEventJpaEntity {
 
     @Column(name = "occurred_at", nullable = false)
     private OffsetDateTime occurredAt;
+
+    @Column(name = "event_type", insertable = false, updatable = false)
+    private String eventType;
 }
