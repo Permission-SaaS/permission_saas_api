@@ -4,7 +4,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 
-import com.saas.permissions.project.application.project.command.SearchProjectsQuery;
+import com.saas.permissions.project.application.project.query.SearchProjectsQuery;
 import com.saas.permissions.project.domain.project.Project;
 import com.saas.permissions.project.domain.project.ProjectRepository;
 

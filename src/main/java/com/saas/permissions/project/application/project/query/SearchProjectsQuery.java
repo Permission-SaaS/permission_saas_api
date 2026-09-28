@@ -1,4 +1,4 @@
-package com.saas.permissions.project.application.project.command;
+package com.saas.permissions.project.application.project.query;
 
 public record SearchProjectsQuery(
                 String name,

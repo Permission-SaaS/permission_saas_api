@@ -16,7 +16,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import com.saas.permissions.project.application.project.command.SearchProjectsQuery;
+import com.saas.permissions.project.application.project.query.SearchProjectsQuery;
 import com.saas.permissions.project.application.route.FindProjectRoutesUseCase;
 import com.saas.permissions.project.domain.project.Project;
 import com.saas.permissions.project.domain.project.ProjectRepository;

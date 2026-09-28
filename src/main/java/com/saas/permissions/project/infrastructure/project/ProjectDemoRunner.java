@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import com.saas.permissions.project.application.project.FindAllProjectsUseCase;
 import com.saas.permissions.project.application.route.FindProjectRoutesUseCase;
 import com.saas.permissions.project.application.project.SearchProjectsUseCase;
-import com.saas.permissions.project.application.project.command.SearchProjectsQuery;
+import com.saas.permissions.project.application.project.query.SearchProjectsQuery;
 import com.saas.permissions.project.domain.project.Project;
 import com.saas.permissions.project.domain.route.Route;
 
