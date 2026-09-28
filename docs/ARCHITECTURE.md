@@ -13,7 +13,8 @@ Todo módulo tem as mesmas quatro camadas, sempre nessa ordem de dependência:
 ```
 domain/              ← núcleo, sem dependências externas
 application/         ← orquestra o domain
-  command/           ← command objects (entrada dos use cases, sem anotações HTTP)
+  command/           ← command objects (entrada dos use cases que alteram estado, sem anotações HTTP)
+  query/             ← query objects (entrada dos use cases de leitura com filtros, sem anotações HTTP)
 infrastructure/      ← implementa o que o domain definiu
 api/                 ← expõe via HTTP
   dto/               ← request e response DTOs (com validações Jakarta)
@@ -69,7 +70,7 @@ permission ───────────────────────
   de autenticação, fora do escopo — ver docs/PATTERNS.md
 
 audit ───────────────────────────────────────────────────  ← implementado na disciplina de Spring Boot
-  GET /audit-events → FindAuditEventsUseCase (filtros type/projectId/onlyDenied)
+  GET /audit-events → SearchAuditEventsUseCase (filtros type/projectId/onlyDenied/from/to)
   AuditLogListener escuta PermissionValidatedEvent e registra a validação
   AuditEvent é abstrata: PermissionCheckEvent e ProjectLifecycleEvent
   herdam dela — a API expõe a hierarquia por type() e describe()
@@ -119,6 +120,13 @@ Um módulo **nunca** acessa o repositório JPA de outro módulo diretamente. A c
 | Request DTO  | `<módulo>/api/dto/`             | Contrato HTTP — valida entrada com`@NotBlank`, `@Email`, etc. |
 | Response DTO | `<módulo>/api/dto/`             | Contrato HTTP — formato da resposta JSON                          |
 | Command      | `<módulo>/application/command/` | Intenção de negócio — Java puro, sem anotações de framework  |
+| Query        | `<módulo>/application/query/`   | Pergunta de leitura (filtros) — Java puro, sem anotações de framework |
+
+**Command e Query têm a mesma forma, e pacotes diferentes.** Os dois são *Parameter Objects* — records passivos que carregam a entrada de um use case. O sufixo e o pacote dizem a intenção sem abrir o use case: `Command` altera estado, `Query` só lê (ver `PATTERNS.md` → "Command Object"). Até a disciplina de microsserviços as duas Queries do projeto moravam em `command/`; foram separadas quando o `audit` passou a ter os dois tipos lado a lado no serviço extraído.
+
+**Quando criar um objeto de entrada.** Só quando a entrada vem de um DTO — um corpo de requisição ou um conjunto de filtros opcionais (`CreateProjectCommand`, `SearchProjectsQuery`). Identificadores de caminho e um filtro isolado vão como parâmetros simples (`FindPlanByIdUseCase.execute(UUID)`, `GrantRouteToRoleUseCase.execute(projectId, roleId, routeId)`, `FindProjectRoutesUseCase.execute(projectId, httpMethod)`): um record que só embrulha um `UUID` é cerimônia sem ganho.
+
+**Não confundir com o `@Query` do Spring Data.** A Query de `application/query/` é a *pergunta* do caso de uso e não sabe que existe banco; o `@Query` é a *forma* de responder em JPQL e vive só nas interfaces `Jpa*Repository` de `infrastructure/`, atrás da porta do domínio.
 
 **Por que separar DTO de Command:** o DTO pertence ao contrato HTTP e pode ter campos exclusivos de validação (ex: `recaptchaToken`) que o use case não precisa saber. O Command pertence à intenção de negócio. Se a API mudar, só o DTO muda; se a regra de negócio mudar, só o Command muda.
 
@@ -138,7 +146,7 @@ A interface `Mapper<I, O>` fica em `shared/domain/` e é reutilizada por todos o
 
 ### Convenções de DTO, Command e Mapper nos módulos `project` e `audit`
 
-**Campo nulo significa ausência de critério.** Vale para os filtros de leitura — `SearchProjectsRequest`, `SearchProjectsQuery`, `SearchAuditEventsRequest` e `AuditEventQuery`: nulo quer dizer "não filtrar por este critério", o que permite a mesma consulta servir a chamadas com e sem filtro. Em `UpdateProjectRequest` a mesma convenção significa "manter o valor atual", por ser uma alteração parcial.
+**Campo nulo significa ausência de critério.** Vale para os filtros de leitura — `SearchProjectsRequest`, `SearchProjectsQuery`, `SearchAuditEventsRequest` e `SearchAuditEventsQuery`: nulo quer dizer "não filtrar por este critério", o que permite a mesma consulta servir a chamadas com e sem filtro. Em `UpdateProjectRequest` a mesma convenção significa "manter o valor atual", por ser uma alteração parcial.
 
 **Por que `UpdateProjectRequest` não tem `@NotBlank`.** O domínio precisa distinguir "não informado" (nulo, mantém) de "informado vazio" (string em branco, é erro). Um `@NotBlank` no DTO recusaria os dois casos na borda e tiraria do agregado a decisão — `Project.update()` é quem lança `InvalidProjectDataException` — que responde **400**, e não 409, desde que passou a herdar `InvalidDataException`. O `docs/API.md` já descrevia esse endpoint como "`400` em dados inválidos": a mudança alinhou o código ao contrato que estava documentado.
 
@@ -165,7 +173,9 @@ infrastructure/
 
 Trocar o banco de dados exige apenas um novo adapter — o use case não muda.
 
-**A porta é burra; filtro e ordenação ficam no use case.** `ProjectRepository` expõe só `save`, `findById`, `findAll` e `existsById`. Quem filtra por `deletedAt`, por trecho de nome, por método HTTP e quem ordena é o use case (`SearchProjectsUseCase`, `FindProjectRoutesUseCase`, `FindAuditEventsUseCase`). Isso mantém o adapter in-memory e o adapter JPA com a mesma superfície, e concentra a regra de leitura onde ela é testável sem banco. A contrapartida é que consultas que precisem descer para o SQL (paginação, agregação) exigem ampliar a porta — na etapa 4 as consultas derivadas do `JpaRepository` entram por baixo do adapter, sem mudar o use case.
+**A porta é burra; filtro e ordenação ficam no use case.** `ProjectRepository` expõe só `save`, `findById`, `findAll` e `existsById`. Quem filtra por `deletedAt`, por trecho de nome, por método HTTP e quem ordena é o use case (`SearchProjectsUseCase`, `FindProjectRoutesUseCase`). Isso mantém o adapter in-memory e o adapter JPA com a mesma superfície, e concentra a regra de leitura onde ela é testável sem banco. A contrapartida é que consultas que precisem descer para o SQL (paginação, agregação) exigem ampliar a porta — na etapa 4 as consultas derivadas do `JpaRepository` entram por baixo do adapter, sem mudar o use case.
+
+**Exceção: o `audit` filtra no banco.** A trilha de auditoria cresce sem limite, e filtrar em memória carregava a tabela inteira a cada consulta. A porta `AuditEventRepository` expõe `search` e `searchDenied` com os filtros como parâmetros, e o adapter os resolve em JPQL — ver ADR-009. O `project` continua na regra geral porque o volume por cliente é pequeno.
 
 `ProjectRepository` também não expõe `deleteById`: a remoção é soft delete e é comportamento do agregado (`Project.delete()`); uma remoção física na porta permitiria contorná-lo por fora do domínio.
 
@@ -524,7 +534,7 @@ Entidades sem regra de negócio própria (`Plan`, hoje) podem continuar com `@Da
 
 ### Herança do `audit`: `SINGLE_TABLE`
 
-`AuditEvent` → `PermissionCheckEvent` / `ProjectLifecycleEvent` foi mapeada como tabela única discriminada por `event_type`, com valores iguais aos devolvidos por `AuditEvent.type()`. A alternativa `JOINED` foi descartada porque a trilha é *append-only* e sempre lida pela superclasse (`FindAuditEventsUseCase` devolve `List<AuditEvent>`) — pagar um JOIN por leitura não se justifica.
+`AuditEvent` → `PermissionCheckEvent` / `ProjectLifecycleEvent` foi mapeada como tabela única discriminada por `event_type`, com valores iguais aos devolvidos por `AuditEvent.type()`. A alternativa `JOINED` foi descartada porque a trilha é *append-only* e sempre lida pela superclasse (`SearchAuditEventsUseCase` devolve `List<AuditEvent>`) — pagar um JOIN por leitura não se justifica.
 
 O preço é que as colunas de cada subclasse precisam ser `NULL`-áveis. A obrigatoriedade volta como `CHECK` condicionado ao discriminador (`audit_events_permission_check_fields`, `audit_events_lifecycle_fields`), o que também protege `granted` e `duration_ms`, primitivos no domínio (`boolean`/`double`) que não aceitam `null`.
 
@@ -539,7 +549,7 @@ As regras que hoje só existem em Java foram repetidas como constraint, para que
 | `projects_max_roles_check` | `Project.update()` → `InvalidProjectDataException`; `@Min(1)` de `CreateProjectRequest` |
 | `routes_http_method_check`, `routes_path_check` | `@Pattern` de `AddRouteRequest` |
 
-Dois índices são parciais, cobrindo exatamente os filtros que os use cases aplicam: `idx_projects_active` (`WHERE deleted_at IS NULL`) para o soft delete que `FindAllProjectsUseCase`/`FindProjectByIdUseCase` tratam como inexistência, e `idx_audit_events_denied` (`WHERE granted = FALSE`) para o filtro `onlyDenied` de `FindAuditEventsUseCase`.
+Dois índices são parciais, cobrindo exatamente os filtros que os use cases aplicam: `idx_projects_active` (`WHERE deleted_at IS NULL`) para o soft delete que `FindAllProjectsUseCase`/`FindProjectByIdUseCase` tratam como inexistência, e `idx_audit_events_denied` (`WHERE granted = FALSE`) para o filtro `onlyDenied` de `SearchAuditEventsUseCase`.
 
 `updated_at` é *nullable* nas três tabelas novas, ao contrário de `clients`/`subscriptions`, que usam `DEFAULT NOW()`: `Project`, `Role` e `Route` só preenchem `updatedAt` na primeira alteração, e um default reescreveria essa semântica.
 
@@ -594,6 +604,66 @@ Reescreveria a evidência das disciplinas anteriores em vez de acrescentar à el
   verificada pela rede: não há como importar o pacote do outro.
 - Se uma disciplina futura precisar de build único, a conversão continua possível — e aí o custo do
   diff recai sobre aquela entrega, não sobre esta.
+
+---
+
+## ADR-009: a consulta da trilha de auditoria desce para o banco, em JPQL
+
+**Status:** aceito na etapa 1 da disciplina de microsserviços.
+
+**Contexto:** até aqui, `GET /audit-events` carregava todos os eventos (ou todos os de um projeto)
+e o use case filtrava `type` e `onlyDenied` num stream — a regra geral "a porta é burra" da seção
+*Adapter Pattern na infrastructure*. Para o `audit` essa regra custa caro: a trilha é *append-only*,
+ganha uma linha a cada validação de permissão e nunca é podada. A etapa 1 também pede consultas
+Spring Data coerentes com o domínio, e a busca por período era a que faltava.
+
+**Decisão:** a porta ganha dois métodos com os filtros como parâmetros explícitos, e o adapter os
+resolve em duas consultas `@Query` (JPQL):
+
+| Porta | Consulta | Filtros |
+|---|---|---|
+| `search(type, projectId, from, to)` | `JpaAuditEventRepository.search` sobre `AuditEventJpaEntity` | tipo, projeto, período |
+| `searchDenied(projectId, from, to)` | `JpaPermissionCheckEventRepository.searchDenied` sobre `PermissionCheckEventJpaEntity` | `granted = false`, projeto, período |
+
+Cada filtro segue o padrão `(:param IS NULL OR campo = :param)`: parâmetro nulo significa "não
+filtrar", a mesma convenção dos DTOs de busca. O use case `SearchAuditEventsUseCase` fica só com a
+regra de negócio: rejeita período invertido (`InvalidAuditPeriodException`, 400), normaliza o tipo
+para maiúsculas e escolhe entre `search` e `searchDenied`.
+
+Três detalhes de implementação que não são óbvios:
+
+- **`searchDenied` tem repositório próprio.** O JPQL navega por classes, não por tabelas: `granted`
+  é declarado só na subclasse, então a consulta precisa partir de `PermissionCheckEventJpaEntity`,
+  mesmo que as duas classes gravem na mesma tabela (ADR-004, `SINGLE_TABLE`).
+- **O discriminador é mapeado como atributo somente leitura** (`eventType`, com
+  `insertable = false, updatable = false`), para o filtro de tipo comparar texto. Quem grava a coluna
+  continua sendo o `@DiscriminatorValue`. A alternativa `TYPE(e) IN :types` foi descartada porque
+  exigiria passar uma coleção de `Class` como parâmetro.
+- **As datas levam `cast(:from as OffsetDateTime)` no lado do `IS NULL`.** Para uma data nula, o
+  driver do PostgreSQL não informa o tipo do parâmetro — `timestamp` e `timestamptz` são ambos
+  candidatos —, e o banco recusa `$5 is null` com *could not determine data type of parameter*.
+  `String` e `UUID` não precisam do `cast` porque o driver informa o tipo mesmo com valor nulo. O H2
+  dos testes infere o tipo sozinho, então esse erro só aparece no PostgreSQL.
+
+**Alternativas descartadas:**
+
+- **Consultas derivadas, uma por combinação** (`findByGrantedFalseAndOccurredAtBetween…`): cinco
+  filtros opcionais geram dezenas de combinações, e cada uma viraria um método.
+- **`Specification` (Criteria API):** é o caminho idiomático para filtros realmente dinâmicos, mas
+  com cinco filtros fixos o JPQL fica legível numa tela e não exige montar predicados em código.
+  Continua sendo a saída se os filtros crescerem.
+
+**Consequências:**
+
+- O adapter JPA e um eventual adapter em memória deixam de ter o mesmo custo de implementação:
+  filtrar passou a ser responsabilidade do adapter. Aceitável porque o `audit` não tem adapter em
+  memória desde o ADR-005.
+- O índice parcial `idx_audit_events_denied` (`occurred_at DESC WHERE granted = FALSE`), criado na
+  `V8`, passa a ser usado de fato — antes existia, mas a filtragem acontecia no Java.
+- **Sem teste automatizado das consultas por enquanto.** Foram verificadas contra o PostgreSQL real
+  com a aplicação no ar (sem filtro, período, tipo em minúsculas, `onlyDenied` com
+  `PROJECT_LIFECYCLE` e período invertido). O teste de integração ficou para o `audit-service`, que é
+  onde esse código passa a morar na etapa 2.
 
 ---
 
@@ -667,7 +737,8 @@ src/main/java/com/saas/permissions/
 │   │   ├── project/       # Create/Update/Delete/Purge/FindById/FindAll/Search ProjectUseCase,
 │   │   │   │              # CheckRouteAccessUseCase, RouteAccessResult,
 │   │   │   │              # package-info.java com @NamedInterface("application.project")
-│   │   │   └── command/   # CreateProjectCommand, UpdateProjectCommand, SearchProjectsQuery
+│   │   │   ├── command/   # CreateProjectCommand, UpdateProjectCommand
+│   │   │   └── query/     # SearchProjectsQuery
 │   │   ├── role/          # AddRoleToProjectUseCase
 │   │   │   └── command/   # AddRoleToProjectCommand
 │   │   ├── route/         # AddRouteToProjectUseCase, FindProjectRoutesUseCase
@@ -716,8 +787,8 @@ src/main/java/com/saas/permissions/
     ├── domain/            # AuditEvent.java (abstrata), PermissionCheckEvent.java,
     │                      # ProjectLifecycleEvent.java, LifecycleAction.java,
     │                      # AuditEventRepository.java e AuditEventJournal.java (portas)
-    ├── application/       # AuditLogListener.java (Observer), FindAuditEventsUseCase.java
-    │   └── command/       # AuditEventQuery.java
+    ├── application/       # AuditLogListener.java (Observer), SearchAuditEventsUseCase.java
+    │   └── query/         # SearchAuditEventsQuery.java
     ├── infrastructure/    # AuditEventJpaEntity (SINGLE_TABLE) + PermissionCheckEventJpaEntity
     │                      # + ProjectLifecycleEventJpaEntity, JpaAuditEventRepository,
     │                      # AuditEventRepositoryAdapter, AuditEventFileWriter, AuditDemoRunner,

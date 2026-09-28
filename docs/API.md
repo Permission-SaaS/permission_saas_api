@@ -539,7 +539,9 @@ curl "http://localhost:8080/projects/$PROJ/roles/$ROLE/routes?includeRevoked=tru
 
 Lista a trilha de auditoria, do evento mais recente para o mais antigo. Os eventos são gravados pelo Observer `AuditLogListener`, que reage ao `PermissionValidatedEvent` publicado a cada `POST /validate-permission` — ver `docs/PATTERNS.md`.
 
-**Query params** (todos opcionais, `SearchAuditEventsRequest`): `type` (`PERMISSION_CHECK` ou `PROJECT_LIFECYCLE`), `projectId` (UUID) e `onlyDenied` (`true` devolve só as validações negadas).
+**Query params** (todos opcionais, `SearchAuditEventsRequest`): `type` (`PERMISSION_CHECK` ou `PROJECT_LIFECYCLE`, sem diferenciar maiúsculas), `projectId` (UUID), `onlyDenied` (`true` devolve só as validações negadas), `from` e `to` (ISO-8601 com fuso, ex.: `2026-09-01T00:00:00Z`; os dois limites entram no resultado). Um limite sozinho vale como "a partir de" ou "até". `onlyDenied=true` com `type=PROJECT_LIFECYCLE` devolve lista vazia — evento de ciclo de vida nunca é negado.
+
+Os filtros são aplicados no banco, por consulta JPQL (ver `docs/ARCHITECTURE.md` → ADR-009).
 
 **Response** `200 OK` — array de `AuditEventResponse`:
 ```json
@@ -558,8 +560,11 @@ Lista a trilha de auditoria, do evento mais recente para o mais antigo. Os event
 
 **Um DTO para toda a hierarquia:** `AuditEvent` é abstrata e tem duas subclasses (`PermissionCheckEvent`, `ProjectLifecycleEvent`). O que as distingue aparece em `type` e `description`, ambos polimórficos (`type()` e `describe()`), então a API expõe a herança sem precisar de um DTO por subclasse.
 
-**Erros:** `400 Bad Request` se `type` não for um dos valores conhecidos.
+**Erros:** `400 Bad Request` se `type` não for um dos valores conhecidos, se `from` estiver no futuro ou se `from` for posterior a `to` (`InvalidAuditPeriodException`).
 
 ```bash
 curl "http://localhost:8080/audit-events?onlyDenied=true"
+curl "http://localhost:8080/audit-events?onlyDenied=true&from=2026-09-01T00:00:00Z&to=2026-09-30T23:59:59Z"
 ```
+
+> Use `Z` ou um fuso negativo (`-03:00`) na URL. Um `+` sem codificação (`%2B`) chega ao servidor como espaço e a data não é reconhecida.

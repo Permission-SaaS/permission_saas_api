@@ -276,8 +276,8 @@ validação.
 4. `ValidatePermissionRequest` → `PermissionCheckRequest` → `PermissionValidatedEvent` →
    `AuditLogListener`: é o mesmo caminho que `projectId` e `httpMethod` percorreram na etapa 4, e serve
    de roteiro.
-5. `AuditEventQuery` + `GET /audit-events?userId=` para consultar, com consulta derivada
-   `findByUserIdOrderByOccurredAtDesc`.
+5. `SearchAuditEventsQuery` + `GET /audit-events?userId=` para consultar, com um filtro
+   `(:userId IS NULL OR event.userId = :userId)` a mais nas consultas JPQL do ADR-009.
 6. Coleção Postman e `docs/API.md`.
 
 **Ressalva de privacidade:** o campo passa a guardar um identificador de pessoa vindo de outro sistema.
