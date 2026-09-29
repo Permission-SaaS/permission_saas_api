@@ -52,3 +52,7 @@ management:
 
 springdoc:
   show-actuator: true
+
+audit:
+  service:
+    url: ${AUDIT_SERVICE_URL:http://localhost:8081}
