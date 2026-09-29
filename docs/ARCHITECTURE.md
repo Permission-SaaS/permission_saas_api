@@ -4,6 +4,28 @@
 
 Um **monolito modular**: um único processo/deploy, mas organizado em módulos independentes por domínio de negócio. Cada módulo é um mini-sistema autocontido que não conhece os detalhes internos dos outros.
 
+Desde a disciplina de microsserviços, o sistema é **um monolito modular mais um serviço extraído dele**: o `permission-service/` (a aplicação principal, com `identity`, `billing`, `project`, `permission` e `audit`) e o `audit-service/`. A extração segue o padrão *Strangler Fig* — uma capacidade de cada vez, começando pela mais desacoplada — em vez de reescrever o monolito inteiro em serviços. Ver "O `audit-service`" abaixo e o ADR-008.
+
+---
+
+## O `audit-service` — o primeiro serviço extraído
+
+Aplicação Spring Boot própria (`audit-service/`, porta 8081), com as mesmas quatro camadas de um módulo do monolito — sem subpacote de módulo, porque o serviço inteiro **é** o módulo:
+
+```
+com.saas.audit/
+  domain/          AuditEvent e subclasses, AuditEventRepository e AuditEventJournal (portas), exception/
+  application/     SearchAuditEventsUseCase (query/), RegisterPermissionCheckUseCase (command/)
+  infrastructure/  entidades JPA SINGLE_TABLE, consultas JPQL do ADR-009, AuditEventFileWriter
+  api/             AuditEventController, DTOs, mappers, GlobalExceptionHandler
+```
+
+- **Dono dos próprios dados:** banco `audit_db` num container Postgres próprio (`audit-postgres`, porta 5433), com usuário próprio — a aplicação principal nem tem credencial para entrar nele. O schema é da migration `V1` do serviço, cópia da `V8` do monolito.
+- **Contrato pela rede, não por código:** `GET /audit-events` e `POST /audit-events/permission-checks` (ver `docs/API.md`). O que os dois lados têm em comum — `Mapper`, `ErrorResponse`, as exceções base — foi **copiado**, não compartilhado por biblioteca (ADR-008).
+- **O que ficou de fora:** Spring Security (o serviço é chamado pela rede interna, não por clientes), Spring Modulith (é um módulo só), `AuditDemoRunner` e `AuditLogListener` — no serviço, o evento chega pelo `POST`, não por evento em memória.
+
+**Estado de transição (28/09/2026).** O serviço já funciona sozinho, mas ninguém o chama ainda: o módulo `audit` do monolito continua gravando na tabela `audit_events` do banco principal. A extração se completa quando o `AuditLogListener` passar a chamar o serviço via OpenFeign e a persistência local do módulo for removida, com uma migration apagando a tabela antiga. Na etapa 4, a gravação migra do Feign para uma fila no RabbitMQ, publicada pela aplicação principal; a consulta continua pelo Feign.
+
 ---
 
 ## Estrutura interna de cada módulo

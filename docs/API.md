@@ -1,6 +1,6 @@
 # API — Permission SaaS
 
-Cada endpoint implementado: método, path, request/response e um exemplo de `curl`.
+Cada endpoint implementado: método, path, request/response e um exemplo de `curl`. As seções por módulo descrevem a aplicação principal (`permission-service`, porta 8080); o serviço extraído tem sua própria seção no fim, [`audit-service`](#audit-service--serviço-independente-porta-8081).
 
 Uma coleção Postman com todos os endpoints, encadeados por variáveis (`clientId` → `planId` → `apiKey` → `projectId`) e com asserções de status, está versionada em `docs/postman/permission-saas.postman_collection.json`. Para rodar a coleção inteira sem abrir o Postman:
 
@@ -568,3 +568,71 @@ curl "http://localhost:8080/audit-events?onlyDenied=true&from=2026-09-01T00:00:0
 ```
 
 > Use `Z` ou um fuso negativo (`-03:00`) na URL. Um `+` sem codificação (`%2B`) chega ao servidor como espaço e a data não é reconhecida.
+
+---
+
+## `audit-service` — serviço independente (porta 8081)
+
+A trilha de auditoria extraída como aplicação Spring Boot própria, com banco próprio (`audit_db`, porta 5433). Na etapa 2 da disciplina de microsserviços quem chama estes endpoints é a aplicação principal, via OpenFeign; até lá eles são exercitados direto, pelo Postman (pasta `audit-service (8081)`) ou pelo Swagger UI em `http://localhost:8081/swagger-ui/index.html`.
+
+Erros seguem o mesmo [formato padrão](#formato-padrão-de-erro) da aplicação principal. O serviço não tem autenticação: é chamado pela rede interna dos serviços, não por clientes.
+
+### `GET /audit-events`
+
+Mesmo contrato do [`GET /audit-events`](#get-audit-events) da aplicação principal — filtros `type`, `projectId`, `onlyDenied`, `from` e `to`, resposta `AuditEventResponse[]` do mais recente para o mais antigo e os mesmos `400`. As consultas JPQL são as do ADR-009, copiadas para o serviço.
+
+```bash
+curl "http://localhost:8081/audit-events?onlyDenied=true&from=2026-09-01T00:00:00Z"
+```
+
+### `POST /audit-events/permission-checks`
+
+Registra uma validação de permissão na trilha. O caminho é específico do tipo de evento porque o corpo só serve para validações de permissão; `GET /audit-events` continua listando todos os tipos juntos.
+
+**Request** (`RegisterPermissionCheckRequest`):
+```json
+{
+  "projectId": "11111111-1111-1111-1111-111111111111",
+  "occurredAt": "2026-09-28T20:00:00Z",
+  "routePath": "/produtos",
+  "httpMethod": "GET",
+  "roleName": "ADMIN",
+  "granted": false,
+  "reason": "invalid or inactive api key",
+  "durationMs": 3.5
+}
+```
+
+| Campo | Regra |
+|---|---|
+| `projectId` | obrigatório, UUID |
+| `occurredAt` | obrigatório, ISO-8601 com fuso. **Sem** `@PastOrPresent`: a data é gerada por outro serviço, com outro relógio, e uma diferença de milissegundos entre eles recusaria eventos legítimos |
+| `routePath` | obrigatório, começa com `/`, até 255 caracteres |
+| `httpMethod` | obrigatório, `GET`/`POST`/`PUT`/`PATCH`/`DELETE` sem diferenciar maiúsculas; gravado em maiúsculas |
+| `roleName` | obrigatório, até 80 caracteres |
+| `granted` | obrigatório. É `Boolean`, não `boolean`: um campo ausente vira `400`, e não "negado" em silêncio |
+| `reason` | opcional (só as negadas têm motivo), até 255 caracteres |
+| `durationMs` | obrigatório, `>= 0` |
+
+Os limites de tamanho seguem as colunas da migration `V1`, para que um valor grande demais responda `400` em vez de estourar no banco.
+
+**Response** `201 Created` — o `AuditEventResponse` gravado:
+```json
+{
+  "id": "3848fce2-7590-4fbc-b802-ff41b7085232",
+  "type": "PERMISSION_CHECK",
+  "projectId": "11111111-1111-1111-1111-111111111111",
+  "occurredAt": "2026-09-28T20:00Z",
+  "description": "NEGADO GET /produtos para o cargo 'ADMIN' — invalid or inactive api key (3.5 ms)"
+}
+```
+
+Cada evento gravado também é acrescentado como uma linha em `logs/audit-events.txt`, relativo à pasta de onde o serviço sobe.
+
+**Erros:** `400 Bad Request` com os campos inválidos na mensagem (ex.: `"routePath: must start with /; granted: must not be null"`), ou `"Malformed request body"` para JSON quebrado ou UUID/data em formato inválido.
+
+```bash
+curl -X POST http://localhost:8081/audit-events/permission-checks \
+  -H "Content-Type: application/json" \
+  -d '{"projectId":"11111111-1111-1111-1111-111111111111","occurredAt":"2026-09-28T20:00:00Z","routePath":"/produtos","httpMethod":"GET","roleName":"ADMIN","granted":false,"reason":"invalid or inactive api key","durationMs":3.5}'
+```
