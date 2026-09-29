@@ -564,6 +564,8 @@ void shouldRegisterClientSuccessfully() {
 
 ## Comandos para rodar os testes
 
+Os comandos rodam dentro da pasta do projeto (`cd permission-service` para a aplicação principal).
+
 ```bash
 # Rodar todos os testes
 ./mvnw test

@@ -559,36 +559,39 @@ Dois índices são parciais, cobrindo exatamente os filtros que os use cases apl
 
 ## ADR-008: projetos irmãos no mesmo repositório, não multi-módulo Maven
 
-**Status:** aceito na etapa 1 da disciplina de microsserviços.
+**Status:** aceito na etapa 1 da disciplina de microsserviços; **revisado na etapa 2 (28/09/2026)**
+— a aplicação principal saiu da raiz para `permission-service/`. A versão original e o motivo da revisão estão no
+fim deste ADR.
 
 **Contexto:** a disciplina exige extrair o `audit` para uma aplicação Spring Boot independente e,
 depois, acrescentar um Config Server. Passam a existir três `pom.xml` onde havia um. O caminho
 idiomático do Maven seria converter a raiz em um `pom` agregador (`<packaging>pom</packaging>`) com
-`app/`, `audit-service/` e `config-server/` como módulos.
+`permission-service/`, `audit-service/` e `config-server/` como módulos.
 
 Há uma restrição que vem de fora do Maven: este repositório é a evidência avaliada de três
 disciplinas da Pós-Graduação, e as tags `etapa-1` … `etapa-4` apontam para o código como ele foi
 entregue em 31/08/2026.
 
-**Decisão:** manter a aplicação principal na raiz, com o `pom.xml` e o `src/` atuais intocados, e
-acrescentar os projetos novos como pastas irmãs, cada uma com seu próprio `pom.xml` e seu próprio
-`Dockerfile`:
+**Decisão:** um único repositório, com **cada aplicação em uma pasta irmã** e a raiz reservada para
+o que é de todas elas — orquestração e documentação. Cada aplicação tem seu próprio `pom.xml`,
+`mvnw` e `Dockerfile`; não há `pom` agregador:
 
 ```
 permission_saas/
-├── src/ pom.xml Dockerfile          aplicação principal
-├── audit-service/                   serviço extraído
-├── config-server/                   Spring Cloud Config Server
-└── docker-compose.yml               orquestra todos
+├── permission-service/  aplicação principal (monolito modular)
+├── audit-service/       serviço extraído
+├── config-server/       Spring Cloud Config Server
+├── docker-compose.yml   orquestra todos
+└── docs/  README.md
 ```
 
 Cada projeto compila sozinho (`./mvnw` dentro da pasta) e o `docker-compose.yml` da raiz é o que
 integra os três.
 
-**Alternativa descartada — `pom` agregador na raiz.** Converter exigiria mover `src/` inteiro para
-`app/src/`. O diff da entrega passaria a ser dominado por milhares de linhas de arquivo movido, e
-qualquer `git diff etapa-4..arq-etapa-2` deixaria de mostrar o que esta disciplina construiu.
-Reescreveria a evidência das disciplinas anteriores em vez de acrescentar à ela.
+**Alternativa descartada — `pom` agregador na raiz.** Um agregador só se paga quando há build único
+ou código compartilhado entre os módulos, e aqui não há nenhum dos dois (ver "Duplicação
+consciente" abaixo). Acrescentaria um `pom.xml` na raiz e a tentação de um módulo `common`, que
+voltaria a acoplar os deploys.
 
 **Consequências:**
 
@@ -602,8 +605,31 @@ Reescreveria a evidência das disciplinas anteriores em vez de acrescentar à el
 - O `verifiesModularStructure()` do Spring Modulith continua valendo só para a aplicação principal.
   A fronteira entre ela e o `audit-service` deixa de ser verificada por teste e passa a ser
   verificada pela rede: não há como importar o pacote do outro.
-- Se uma disciplina futura precisar de build único, a conversão continua possível — e aí o custo do
-  diff recai sobre aquela entrega, não sobre esta.
+- Se uma disciplina futura precisar de build único, basta acrescentar um `pom` agregador na raiz
+  listando as pastas como módulos — o layout já é o de um multi-módulo.
+- **Qualquer serviço pode virar repositório próprio depois**, sem perder o histórico:
+  `git subtree split --prefix=audit-service` gera um branch só com a história daquela pasta. Um
+  repositório por serviço desde já foi descartado porque separaria as tags `etapa-*` e
+  `arq-etapa-*` — a evidência das disciplinas — em repositórios diferentes.
+
+**Revisão de 28/09/2026 — a aplicação principal saiu da raiz.** A versão original deste ADR mantinha
+a aplicação principal na raiz (`src/`, `pom.xml`, `Dockerfile`) e acrescentava o `audit-service`
+como pasta dentro dela. O argumento era que mover `src/` para `permission-service/src/` faria o diff da entrega ser
+"dominado por milhares de linhas de arquivo movido". O argumento não se sustenta: o Git registra a
+mudança como renomeação (`{src => permission-service/src}/…`, sem linha alterada), e as tags antigas continuam
+apontando para o layout antigo, intactas.
+
+Na prática, o layout original teve dois custos que não estavam previstos:
+
+- **Parecia que o serviço fazia parte do monolito.** Com o `audit-service/` dentro da pasta da
+  aplicação principal, quem abre o repositório vê um serviço aninhado em outro — o oposto do que a
+  etapa 2 quer demonstrar, duas aplicações independentes.
+- **A IDE concordava com essa leitura.** A extensão Java do VS Code importava o `pom.xml` da raiz e
+  tratava o `audit-service/` como uma pasta do projeto principal, sem classpath próprio. Com a raiz
+  sem `pom.xml`, cada pasta é importada como projeto independente.
+
+A mudança foi feita antes da etapa 2 ganhar Feign, Dockerfiles e Config Server, quando só o
+`docker-compose.yml` e os comandos do `README.md` precisavam de ajuste.
 
 ---
 
@@ -680,7 +706,7 @@ O grupo `public` do `SwaggerConfig` (`GroupedOpenApi`) é só rotulagem de agrup
 ## Estrutura de pacotes
 
 ```
-src/main/java/com/saas/permissions/
+permission-service/src/main/java/com/saas/permissions/
 ├── shared/
 │   ├── domain/
 │   │   ├── Mapper.java         # interface genérica Strategy
