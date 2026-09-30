@@ -22,6 +22,17 @@ spring:
     ignore-migration-patterns: "*:missing,*:future"
     validate-on-migrate: false
 
+  # A gravação da auditoria roda na thread da validação de permissão: com o
+  # default do Feign (60s de leitura), um audit-service travado prenderia cada
+  # validação por um minuto.
+  cloud:
+    openfeign:
+      client:
+        config:
+          audit-service:
+            connect-timeout: 1000
+            read-timeout: 2000
+
   security:
     oauth2:
       client:

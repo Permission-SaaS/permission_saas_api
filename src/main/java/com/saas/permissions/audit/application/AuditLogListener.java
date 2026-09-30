@@ -3,24 +3,24 @@ package com.saas.permissions.audit.application;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-import com.saas.permissions.audit.domain.AuditEvent;
-import com.saas.permissions.audit.domain.AuditEventJournal;
-import com.saas.permissions.audit.domain.AuditEventRepository;
+import com.saas.permissions.audit.domain.AuditTrail;
 import com.saas.permissions.audit.domain.PermissionCheckEvent;
+import com.saas.permissions.audit.domain.exception.AuditTrailUnavailableException;
 import com.saas.permissions.permission.domain.event.PermissionValidatedEvent;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class AuditLogListener {
 
-    private final AuditEventRepository auditEventRepository;
-    private final AuditEventJournal auditEventJournal;
+    private final AuditTrail auditTrail;
 
     @EventListener
     public void on(PermissionValidatedEvent event) {
-        AuditEvent saved = auditEventRepository.save(PermissionCheckEvent.builder()
+        PermissionCheckEvent check = PermissionCheckEvent.builder()
                 .projectId(event.projectId())
                 .occurredAt(event.occurredAt())
                 .routePath(event.route())
@@ -29,8 +29,13 @@ public class AuditLogListener {
                 .granted(event.granted())
                 .reason(event.reason())
                 .durationMs(event.durationMs())
-                .build());
+                .build();
 
-        auditEventJournal.record(saved);
+        try {
+            auditTrail.record(check);
+        } catch (AuditTrailUnavailableException e) {
+            log.warn("Audit event lost: {}", e.getCause().getMessage());
+        }
     }
+
 }
