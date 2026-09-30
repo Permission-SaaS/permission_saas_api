@@ -104,6 +104,8 @@ Value object de saída da chain (`permission/domain/dto`). Carrega `granted` (bo
 
 É o item (4) que responde à pergunta de negócio do produto: *o cargo X pode acessar a rota Y no projeto Z?* Sem ele, qualquer cargo alcançaria qualquer rota do projeto.
 
+A chain ainda **não confere se a `ApiKey` pertence ao dono do projeto**, e a busca da chave fica mais lenta a cada cliente — ver "Limitações conhecidas" abaixo.
+
 ---
 
 ## `project`
@@ -241,6 +243,48 @@ Mudança estrutural em um projeto.
 | `performedBy` | UUID | FK → `Client` responsável |
 
 `type()` = `PROJECT_LIFECYCLE`.
+
+---
+
+## Limitações conhecidas
+
+Regras que o código aplica hoje de forma incompleta. Foram encontradas em 30/09/2026, ao revisar o
+fluxo de `POST /validate-permission`, e ficam como trabalho futuro: corrigir agora tiraria tempo das
+etapas 3 e 4 da disciplina de microsserviços.
+
+### A `ApiKey` não é conferida contra o dono do projeto
+
+`ApiKeyValidationHandler` só pergunta se a chave existe e está `active`. Ninguém confere se ela
+pertence ao **mesmo `Client`** dono do `projectId` consultado. A chave aponta para uma `Subscription`,
+que tem `clientId`; o `Project` também tem `clientId`, mas os dois nunca são comparados.
+
+**Efeito:** qualquer chave ativa, de qualquer cliente, consulta as permissões de qualquer projeto. A
+Loja X, com a chave dela, descobre quais cargos e rotas existem num projeto da Loja Y, testando
+combinações e lendo o `reason` da resposta.
+
+**Encaminhamento proposto:**
+
+- Um handler novo na chain, entre `ApiKeyValidationHandler` e `RoleRouteValidationHandler`, que compara
+  o `clientId` da assinatura da chave com o `clientId` do projeto. Os handlers existentes não mudam (OCP).
+- A porta `ApiKeyValidator` passa a devolver o `clientId` da chave em vez de um `boolean`, e o `project`
+  expõe o dono do projeto por use case, como já faz com `CheckRouteAccessUseCase`.
+- A negação usa o mesmo `reason` de projeto inexistente (`project not found or inactive`). Um motivo
+  próprio, como "o projeto é de outro cliente", confirmaria que o projeto existe.
+
+### A validação da `ApiKey` fica mais lenta a cada cliente
+
+`FindActiveApiKeyByPlainKeyUseCase` carrega **todas** as chaves ativas (`findAllActive()`) e compara a
+chave recebida com cada uma pelo `BCryptPasswordEncoder`. O bcrypt é lento de propósito, então o custo
+de cada validação cresce em linha com o número de chaves ativas. No teste manual de 30/09, uma
+validação com chave inválida levou 553 ms de `durationMs`. Chave inválida é o pior caso, porque compara
+com todas. Isso também abre caminho para abuso: requisições com chaves aleatórias forçam o servidor a
+fazer esse trabalho todo.
+
+**Encaminhamento proposto:** guardar a chave com um hash rápido e determinístico (SHA-256) com índice
+único e buscar por igualdade, uma consulta só. O bcrypt existe para senhas, que têm pouca entropia e
+podem ser adivinhadas; uma `ApiKey` gerada aleatoriamente pela `ApiKeyFactory` não tem esse problema.
+Exige uma migration que invalida as chaves atuais, porque o hash bcrypt não converte para SHA-256, então
+os clientes precisariam gerar chaves novas.
 
 ---
 
