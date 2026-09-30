@@ -24,7 +24,7 @@ com.saas.audit/
 - **Contrato pela rede, não por código:** `GET /audit-events` e `POST /audit-events/permission-checks` (ver `docs/API.md`). O que os dois lados têm em comum — `Mapper`, `ErrorResponse`, as exceções base — foi **copiado**, não compartilhado por biblioteca (ADR-008).
 - **O que ficou de fora:** Spring Security (o serviço é chamado pela rede interna, não por clientes), Spring Modulith (é um módulo só), `AuditDemoRunner` e `AuditLogListener` — no serviço, o evento chega pelo `POST`, não por evento em memória.
 
-**Estado de transição (28/09/2026).** O serviço já funciona sozinho, mas ninguém o chama ainda: o módulo `audit` do monolito continua gravando na tabela `audit_events` do banco principal. A extração se completa quando o `AuditLogListener` passar a chamar o serviço via OpenFeign e a persistência local do módulo for removida, com uma migration apagando a tabela antiga. Na etapa 4, a gravação migra do Feign para uma fila no RabbitMQ, publicada pela aplicação principal; a consulta continua pelo Feign.
+**Estado de transição (30/09/2026).** A gravação já passa pelo serviço: o `AuditLogListener` do monolito traduz o `PermissionValidatedEvent` em `PermissionCheckEvent` e o entrega à porta `AuditTrail`, implementada por `AuditTrailClientAdapter` sobre o cliente OpenFeign `AuditClient` (`audit/infrastructure/client/`). O listener roda na thread da validação de permissão, então duas proteções impedem que a auditoria derrube a validação: timeout curto no cliente `audit-service` (1s para conectar, 2s para responder, no `application.yml`; o default do Feign é 60s) e um `try/catch` no listener. O adapter só traduz a `FeignException` para a `AuditTrailUnavailableException` da porta; quem decide que perder o evento é aceitável e quebrar a validação não é, é a camada `application`. Com o serviço fora do ar, a validação responde normalmente e o evento **se perde**, com um `WARN` no log — a limitação que a etapa 4 resolve trocando o Feign da gravação por uma fila no RabbitMQ. Falta completar a extração: o `GET /audit-events` do monolito ainda lê a tabela local `audit_events`, que parou de receber eventos, e passa a repassar a consulta ao serviço pelo Feign; depois a persistência local do módulo sai, com uma migration apagando a tabela antiga.
 
 ---
 
@@ -94,6 +94,7 @@ permission ───────────────────────
 audit ───────────────────────────────────────────────────  ← implementado na disciplina de Spring Boot
   GET /audit-events → SearchAuditEventsUseCase (filtros type/projectId/onlyDenied/from/to)
   AuditLogListener escuta PermissionValidatedEvent e registra a validação
+  no audit-service (porta AuditTrail → cliente OpenFeign AuditClient)
   AuditEvent é abstrata: PermissionCheckEvent e ProjectLifecycleEvent
   herdam dela — a API expõe a hierarquia por type() e describe()
 ```
@@ -834,13 +835,16 @@ permission-service/src/main/java/com/saas/permissions/
 └── audit/                 # implementado na disciplina de Spring Boot
     ├── domain/            # AuditEvent.java (abstrata), PermissionCheckEvent.java,
     │                      # ProjectLifecycleEvent.java, LifecycleAction.java,
-    │                      # AuditEventRepository.java e AuditEventJournal.java (portas)
+    │                      # AuditEventRepository.java e AuditEventJournal.java (portas),
+    │                      # AuditTrail.java (porta de gravação no audit-service)
     ├── application/       # AuditLogListener.java (Observer), SearchAuditEventsUseCase.java
     │   └── query/         # SearchAuditEventsQuery.java
     ├── infrastructure/    # AuditEventJpaEntity (SINGLE_TABLE) + PermissionCheckEventJpaEntity
-    │                      # + ProjectLifecycleEventJpaEntity, JpaAuditEventRepository,
-    │                      # AuditEventRepositoryAdapter, AuditEventFileWriter, AuditDemoRunner,
-    │                      # UnsupportedAuditEventException
+    │   │                  # + ProjectLifecycleEventJpaEntity, JpaAuditEventRepository,
+    │   │                  # AuditEventRepositoryAdapter, AuditEventFileWriter, AuditDemoRunner,
+    │   │                  # UnsupportedAuditEventException
+    │   └── client/        # AuditClient.java (@FeignClient), AuditTrailClientAdapter.java
+    │       └── dto/       # RegisterPermissionCheckRequest.java, AuditEventResponse.java (contrato)
     └── api/               # AuditEventController.java
         ├── dto/           # SearchAuditEventsRequest.java, AuditEventResponse.java
         └── mapper/        # SearchAuditEventsMapper.java, AuditEventResponseMapper.java
