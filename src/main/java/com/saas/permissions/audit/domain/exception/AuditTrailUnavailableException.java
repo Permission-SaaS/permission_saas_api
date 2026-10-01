@@ -1,8 +1,10 @@
 package com.saas.permissions.audit.domain.exception;
 
-public class AuditTrailUnavailableException extends RuntimeException {
-    
-    public AuditTrailUnavailableException (Throwable cause) {
+import com.saas.permissions.shared.domain.exception.ServiceUnavailableException;
+
+public class AuditTrailUnavailableException extends ServiceUnavailableException {
+
+    public AuditTrailUnavailableException(Throwable cause) {
         super("Audit service is unavailable", cause);
     }
 

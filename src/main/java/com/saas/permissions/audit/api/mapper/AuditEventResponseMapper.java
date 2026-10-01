@@ -3,19 +3,19 @@ package com.saas.permissions.audit.api.mapper;
 import org.springframework.stereotype.Component;
 
 import com.saas.permissions.audit.api.dto.AuditEventResponse;
-import com.saas.permissions.audit.domain.AuditEvent;
+import com.saas.permissions.audit.domain.AuditTrailEntry;
 import com.saas.permissions.shared.domain.Mapper;
 
 @Component
-public class AuditEventResponseMapper implements Mapper<AuditEvent, AuditEventResponse> {
+public class AuditEventResponseMapper implements Mapper<AuditTrailEntry, AuditEventResponse> {
 
     @Override
-    public AuditEventResponse map(AuditEvent event) {
+    public AuditEventResponse map(AuditTrailEntry entry) {
         return new AuditEventResponse(
-                event.getId(),
-                event.type(),
-                event.getProjectId(),
-                event.getOccurredAt() != null ? event.getOccurredAt().toString() : null,
-                event.describe());
+                entry.id(),
+                entry.type(),
+                entry.projectId(),
+                entry.occurredAt(),
+                entry.description());
     }
 }

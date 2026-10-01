@@ -12,10 +12,11 @@ import com.saas.permissions.audit.api.dto.SearchAuditEventsRequest;
 import com.saas.permissions.audit.api.mapper.AuditEventResponseMapper;
 import com.saas.permissions.audit.api.mapper.SearchAuditEventsMapper;
 import com.saas.permissions.audit.application.SearchAuditEventsUseCase;
-import com.saas.permissions.audit.domain.AuditEvent;
+import com.saas.permissions.audit.domain.AuditTrailEntry;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,11 +34,15 @@ public class AuditEventController {
     private final AuditEventResponseMapper auditEventResponseMapper;
 
     @GetMapping
-    @Operation(summary = "Lista a trilha de auditoria, do evento mais recente para o mais antigo")
-    @ApiResponse(responseCode = "200", description = "Lista devolvida com sucesso")
+    @Operation(summary = "Lista a trilha de auditoria, do evento mais recente para o mais antigo. Repassa a consulta ao audit-service")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista devolvida com sucesso"),
+            @ApiResponse(responseCode = "400", description = "Filtro invalido ou periodo invertido"),
+            @ApiResponse(responseCode = "503", description = "audit-service fora do ar ou sem responder")
+    })
     public ResponseEntity<List<AuditEventResponse>> searchAuditEvents(@Valid SearchAuditEventsRequest request) {
 
-        List<AuditEvent> events = searchAuditEventsUseCase.execute(searchAuditEventsMapper.map(request));
+        List<AuditTrailEntry> events = searchAuditEventsUseCase.execute(searchAuditEventsMapper.map(request));
 
         return ResponseEntity.ok(events.stream().map(auditEventResponseMapper::map).toList());
     }

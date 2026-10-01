@@ -13,6 +13,7 @@ import com.saas.permissions.shared.api.dto.ErrorResponse;
 import com.saas.permissions.shared.domain.exception.BusinessRuleException;
 import com.saas.permissions.shared.domain.exception.InvalidDataException;
 import com.saas.permissions.shared.domain.exception.ResourceNotFoundException;
+import com.saas.permissions.shared.domain.exception.ServiceUnavailableException;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -46,6 +47,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidDataException.class)
     public ResponseEntity<ErrorResponse> handleInvalidData(InvalidDataException ex) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(ServiceUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleServiceUnavailable(ServiceUnavailableException ex) {
+        log.warn("{}: {}", ex.getMessage(), String.valueOf(ex.getCause()));
+        return build(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
     }
 
     @ExceptionHandler(Exception.class)
