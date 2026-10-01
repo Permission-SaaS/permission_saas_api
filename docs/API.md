@@ -537,11 +537,11 @@ curl "http://localhost:8080/projects/$PROJ/roles/$ROLE/routes?includeRevoked=tru
 
 ### `GET /audit-events`
 
-Lista a trilha de auditoria, do evento mais recente para o mais antigo. Os eventos são gravados pelo Observer `AuditLogListener`, que reage ao `PermissionValidatedEvent` publicado a cada `POST /validate-permission` — ver `docs/PATTERNS.md`.
+Lista a trilha de auditoria, do evento mais recente para o mais antigo. **Desde 30/09/2026 é um repasse:** a aplicação principal valida os filtros e repassa a consulta ao [`GET /audit-events` do `audit-service`](#get-audit-events-1) pelo cliente OpenFeign `AuditClient`. Os eventos chegam lá pelo Observer `AuditLogListener`, que reage ao `PermissionValidatedEvent` publicado a cada `POST /validate-permission` e os envia ao serviço — ver `docs/PATTERNS.md`.
 
 **Query params** (todos opcionais, `SearchAuditEventsRequest`): `type` (`PERMISSION_CHECK` ou `PROJECT_LIFECYCLE`, sem diferenciar maiúsculas), `projectId` (UUID), `onlyDenied` (`true` devolve só as validações negadas), `from` e `to` (ISO-8601 com fuso, ex.: `2026-09-01T00:00:00Z`; os dois limites entram no resultado). Um limite sozinho vale como "a partir de" ou "até". `onlyDenied=true` com `type=PROJECT_LIFECYCLE` devolve lista vazia — evento de ciclo de vida nunca é negado.
 
-Os filtros são aplicados no banco, por consulta JPQL (ver `docs/ARCHITECTURE.md` → ADR-009).
+Os filtros são aplicados pelo `audit-service`, no banco dele, por consulta JPQL (ver `docs/ARCHITECTURE.md` → ADR-009). `from` e `to` seguem para o serviço convertidos para UTC (`Instant`), então um fuso positivo enviado aqui não chega lá como `+` na URL.
 
 **Response** `200 OK` — array de `AuditEventResponse`:
 ```json
@@ -549,18 +549,23 @@ Os filtros são aplicados no banco, por consulta JPQL (ver `docs/ARCHITECTURE.md
   {
     "id": "e24dd619-da77-46c7-b8ab-956d90d0ad71",
     "type": "PERMISSION_CHECK",
-    "projectId": null,
-    "occurredAt": "2026-08-29T23:04:05.881829269-03:00",
-    "description": "NEGADO null /admin para o cargo 'GUEST' — invalid or inactive api key (74.42 ms)"
+    "projectId": "d13b3f47-8988-46bf-9061-f66dcecb3d04",
+    "occurredAt": "2026-10-01T01:14:31.175821Z",
+    "description": "NEGADO GET /passo-9 para o cargo 'ADMIN' — invalid or inactive api key (762.892476 ms)"
   }
 ]
 ```
 
-> ⚠️ O `null` na descrição é o `httpMethod`: `ValidatePermissionRequest` carrega só `route`, sem o método HTTP, então o evento não tem o que registrar nesse campo. Fecha na etapa 4, junto com a regra real do `RoleRouteValidationHandler`, que vai precisar do método para casar a rota com o projeto.
+**Um DTO para toda a hierarquia:** no `audit-service`, `AuditEvent` é abstrata e tem duas subclasses (`PermissionCheckEvent`, `ProjectLifecycleEvent`). O que as distingue chega pronto em `type` e `description`, ambos polimórficos (`type()` e `describe()`), então a API expõe a herança sem precisar de um DTO por subclasse. A aplicação principal só repassa esses campos (modelo de leitura `AuditTrailEntry`).
 
-**Um DTO para toda a hierarquia:** `AuditEvent` é abstrata e tem duas subclasses (`PermissionCheckEvent`, `ProjectLifecycleEvent`). O que as distingue aparece em `type` e `description`, ambos polimórficos (`type()` e `describe()`), então a API expõe a herança sem precisar de um DTO por subclasse.
+**Erros:**
 
-**Erros:** `400 Bad Request` se `type` não for um dos valores conhecidos, se `from` estiver no futuro ou se `from` for posterior a `to` (`InvalidAuditPeriodException`).
+- `400 Bad Request` se `type` não for um dos valores conhecidos, se `from` estiver no futuro ou se `from` for posterior a `to` (`InvalidAuditPeriodException`). Os três são checados **aqui**, antes de chamar o serviço: como qualquer falha do Feign vira `503`, deixar o serviço rejeitar devolveria "serviço fora do ar" para um erro de quem chamou.
+- `503 Service Unavailable` se o `audit-service` estiver fora do ar ou não responder em 2s (`AuditTrailUnavailableException`):
+
+```json
+{ "status": 503, "error": "Service Unavailable", "message": "Audit service is unavailable", "timestamp": "..." }
+```
 
 ```bash
 curl "http://localhost:8080/audit-events?onlyDenied=true"
@@ -573,7 +578,7 @@ curl "http://localhost:8080/audit-events?onlyDenied=true&from=2026-09-01T00:00:0
 
 ## `audit-service` — serviço independente (porta 8081)
 
-A trilha de auditoria extraída como aplicação Spring Boot própria, com banco próprio (`audit_db`, porta 5433). Na etapa 2 da disciplina de microsserviços quem chama estes endpoints é a aplicação principal, via OpenFeign; até lá eles são exercitados direto, pelo Postman (pasta `audit-service (8081)`) ou pelo Swagger UI em `http://localhost:8081/swagger-ui/index.html`.
+A trilha de auditoria extraída como aplicação Spring Boot própria, com banco próprio (`audit_db`, porta 5433). Desde 30/09/2026 a aplicação principal chama os dois via OpenFeign: o `POST` a cada `POST /validate-permission` e o `GET` a cada consulta ao `GET /audit-events` dela. Também podem ser exercitados direto, pelo Postman (pasta `audit-service (8081)`) ou pelo Swagger UI em `http://localhost:8081/swagger-ui/index.html`.
 
 Erros seguem o mesmo [formato padrão](#formato-padrão-de-erro) da aplicação principal. O serviço não tem autenticação: é chamado pela rede interna dos serviços, não por clientes.
 

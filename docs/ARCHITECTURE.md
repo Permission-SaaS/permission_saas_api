@@ -24,7 +24,7 @@ com.saas.audit/
 - **Contrato pela rede, não por código:** `GET /audit-events` e `POST /audit-events/permission-checks` (ver `docs/API.md`). O que os dois lados têm em comum — `Mapper`, `ErrorResponse`, as exceções base — foi **copiado**, não compartilhado por biblioteca (ADR-008).
 - **O que ficou de fora:** Spring Security (o serviço é chamado pela rede interna, não por clientes), Spring Modulith (é um módulo só), `AuditDemoRunner` e `AuditLogListener` — no serviço, o evento chega pelo `POST`, não por evento em memória.
 
-**Estado de transição (30/09/2026).** A gravação já passa pelo serviço: o `AuditLogListener` do monolito traduz o `PermissionValidatedEvent` em `PermissionCheckEvent` e o entrega à porta `AuditTrail`, implementada por `AuditTrailClientAdapter` sobre o cliente OpenFeign `AuditClient` (`audit/infrastructure/client/`). O listener roda na thread da validação de permissão, então duas proteções impedem que a auditoria derrube a validação: timeout curto no cliente `audit-service` (1s para conectar, 2s para responder, no `application.yml`; o default do Feign é 60s) e um `try/catch` no listener. O adapter só traduz a `FeignException` para a `AuditTrailUnavailableException` da porta; quem decide que perder o evento é aceitável e quebrar a validação não é, é a camada `application`. Com o serviço fora do ar, a validação responde normalmente e o evento **se perde**, com um `WARN` no log — a limitação que a etapa 4 resolve trocando o Feign da gravação por uma fila no RabbitMQ. Falta completar a extração: o `GET /audit-events` do monolito ainda lê a tabela local `audit_events`, que parou de receber eventos, e passa a repassar a consulta ao serviço pelo Feign; depois a persistência local do módulo sai, com uma migration apagando a tabela antiga.
+**Estado de transição (30/09/2026).** A gravação e a consulta já passam pelo serviço. Na gravação, o `AuditLogListener` do monolito traduz o `PermissionValidatedEvent` em `PermissionCheckEvent` e o entrega à porta `AuditTrail`, implementada por `AuditTrailClientAdapter` sobre o cliente OpenFeign `AuditClient` (`audit/infrastructure/client/`). O listener roda na thread da validação de permissão, então duas proteções impedem que a auditoria derrube a validação: timeout curto no cliente `audit-service` (1s para conectar, 2s para responder, no `application.yml`; o default do Feign é 60s) e um `try/catch` no listener. O adapter só traduz a `FeignException` para a `AuditTrailUnavailableException` da porta; quem decide que perder o evento é aceitável e quebrar a validação não é, é a camada `application`. Com o serviço fora do ar, a validação responde normalmente e o evento **se perde**, com um `WARN` no log — a limitação que a etapa 4 resolve trocando o Feign da gravação por uma fila no RabbitMQ. Na consulta, o `GET /audit-events` do monolito valida os filtros e o período (os `400` saem daqui, sem chamar a rede) e repassa ao serviço pela mesma porta `AuditTrail`, que devolve o modelo de leitura `AuditTrailEntry` — a resposta do serviço não traz dados para reconstruir um `PermissionCheckEvent`. Serviço fora do ar vira `503`: a `AuditTrailUnavailableException` estende a `ServiceUnavailableException` do `shared`, mapeada pelo `GlobalExceptionHandler` (o `shared` não pode importar do `audit`, que depende dele). Falta completar a extração removendo a persistência local do módulo, com uma migration apagando a tabela antiga.
 
 ---
 
@@ -92,7 +92,8 @@ permission ───────────────────────
   de autenticação, fora do escopo — ver docs/PATTERNS.md
 
 audit ───────────────────────────────────────────────────  ← implementado na disciplina de Spring Boot
-  GET /audit-events → SearchAuditEventsUseCase (filtros type/projectId/onlyDenied/from/to)
+  GET /audit-events → SearchAuditEventsUseCase (filtros type/projectId/onlyDenied/from/to),
+  repassado ao audit-service pela porta AuditTrail; serviço fora do ar → 503
   AuditLogListener escuta PermissionValidatedEvent e registra a validação
   no audit-service (porta AuditTrail → cliente OpenFeign AuditClient)
   AuditEvent é abstrata: PermissionCheckEvent e ProjectLifecycleEvent
@@ -836,7 +837,8 @@ permission-service/src/main/java/com/saas/permissions/
     ├── domain/            # AuditEvent.java (abstrata), PermissionCheckEvent.java,
     │                      # ProjectLifecycleEvent.java, LifecycleAction.java,
     │                      # AuditEventRepository.java e AuditEventJournal.java (portas),
-    │                      # AuditTrail.java (porta de gravação no audit-service)
+    │                      # AuditTrail.java (porta de gravação e consulta no audit-service),
+    │                      # AuditTrailEntry.java (modelo de leitura da consulta)
     ├── application/       # AuditLogListener.java (Observer), SearchAuditEventsUseCase.java
     │   └── query/         # SearchAuditEventsQuery.java
     ├── infrastructure/    # AuditEventJpaEntity (SINGLE_TABLE) + PermissionCheckEventJpaEntity
