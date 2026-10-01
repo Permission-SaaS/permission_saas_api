@@ -567,6 +567,8 @@ Os filtros são aplicados pelo `audit-service`, no banco dele, por consulta JPQL
 { "status": 503, "error": "Service Unavailable", "message": "Audit service is unavailable", "timestamp": "..." }
 ```
 
+A pasta `audit-service fora do ar` do Postman reproduz o cenário inteiro: a validação de permissão segue respondendo `200` com o serviço parado, a consulta devolve este `503` e, com o serviço religado, a trilha mostra que o evento do período fora do ar se perdeu.
+
 ```bash
 curl "http://localhost:8080/audit-events?onlyDenied=true"
 curl "http://localhost:8080/audit-events?onlyDenied=true&from=2026-09-01T00:00:00Z&to=2026-09-30T23:59:59Z"
