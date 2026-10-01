@@ -24,7 +24,7 @@ com.saas.audit/
 - **Contrato pela rede, não por código:** `GET /audit-events` e `POST /audit-events/permission-checks` (ver `docs/API.md`). O que os dois lados têm em comum — `Mapper`, `ErrorResponse`, as exceções base — foi **copiado**, não compartilhado por biblioteca (ADR-008).
 - **O que ficou de fora:** Spring Security (o serviço é chamado pela rede interna, não por clientes), Spring Modulith (é um módulo só), `AuditDemoRunner` e `AuditLogListener` — no serviço, o evento chega pelo `POST`, não por evento em memória.
 
-**Estado de transição (30/09/2026).** A gravação e a consulta já passam pelo serviço. Na gravação, o `AuditLogListener` do monolito traduz o `PermissionValidatedEvent` em `PermissionCheckEvent` e o entrega à porta `AuditTrail`, implementada por `AuditTrailClientAdapter` sobre o cliente OpenFeign `AuditClient` (`audit/infrastructure/client/`). O listener roda na thread da validação de permissão, então duas proteções impedem que a auditoria derrube a validação: timeout curto no cliente `audit-service` (1s para conectar, 2s para responder, no `application.yml`; o default do Feign é 60s) e um `try/catch` no listener. O adapter só traduz a `FeignException` para a `AuditTrailUnavailableException` da porta; quem decide que perder o evento é aceitável e quebrar a validação não é, é a camada `application`. Com o serviço fora do ar, a validação responde normalmente e o evento **se perde**, com um `WARN` no log — a limitação que a etapa 4 resolve trocando o Feign da gravação por uma fila no RabbitMQ. Na consulta, o `GET /audit-events` do monolito valida os filtros e o período (os `400` saem daqui, sem chamar a rede) e repassa ao serviço pela mesma porta `AuditTrail`, que devolve o modelo de leitura `AuditTrailEntry` — a resposta do serviço não traz dados para reconstruir um `PermissionCheckEvent`. Serviço fora do ar vira `503`: a `AuditTrailUnavailableException` estende a `ServiceUnavailableException` do `shared`, mapeada pelo `GlobalExceptionHandler` (o `shared` não pode importar do `audit`, que depende dele). Falta completar a extração removendo a persistência local do módulo, com uma migration apagando a tabela antiga.
+**Extração concluída (30/09/2026).** A gravação e a consulta passam pelo serviço, e o monolito não guarda mais nada da trilha. Na gravação, o `AuditLogListener` do monolito traduz o `PermissionValidatedEvent` em `PermissionCheckEvent` e o entrega à porta `AuditTrail`, implementada por `AuditTrailClientAdapter` sobre o cliente OpenFeign `AuditClient` (`audit/infrastructure/client/`). O listener roda na thread da validação de permissão, então duas proteções impedem que a auditoria derrube a validação: timeout curto no cliente `audit-service` (1s para conectar, 2s para responder, no `application.yml`; o default do Feign é 60s) e um `try/catch` no listener. O adapter só traduz a `FeignException` para a `AuditTrailUnavailableException` da porta; quem decide que perder o evento é aceitável e quebrar a validação não é, é a camada `application`. Com o serviço fora do ar, a validação responde normalmente e o evento **se perde**, com um `WARN` no log — a limitação que a etapa 4 resolve trocando o Feign da gravação por uma fila no RabbitMQ. Na consulta, o `GET /audit-events` do monolito valida os filtros e o período (os `400` saem daqui, sem chamar a rede) e repassa ao serviço pela mesma porta `AuditTrail`, que devolve o modelo de leitura `AuditTrailEntry` — a resposta do serviço não traz dados para reconstruir um `PermissionCheckEvent`. Serviço fora do ar vira `503`: a `AuditTrailUnavailableException` estende a `ServiceUnavailableException` do `shared`, mapeada pelo `GlobalExceptionHandler` (o `shared` não pode importar do `audit`, que depende dele). A persistência local do módulo — entidades JPA, consultas do ADR-009, arquivo texto, `AuditDemoRunner` — foi apagada e a migration `V10` removeu a tabela `audit_events` do banco principal (ADR-010).
 
 ---
 
@@ -91,13 +91,15 @@ permission ───────────────────────
   TokenValidationHandler segue concedendo sempre: depende de um 2º fator
   de autenticação, fora do escopo — ver docs/PATTERNS.md
 
-audit ───────────────────────────────────────────────────  ← implementado na disciplina de Spring Boot
+audit ───────────────────────────────────────────────────  ← implementado na disciplina de Spring Boot;
+                                                            desde 30/09/2026, cliente do audit-service
   GET /audit-events → SearchAuditEventsUseCase (filtros type/projectId/onlyDenied/from/to),
   repassado ao audit-service pela porta AuditTrail; serviço fora do ar → 503
   AuditLogListener escuta PermissionValidatedEvent e registra a validação
   no audit-service (porta AuditTrail → cliente OpenFeign AuditClient)
-  AuditEvent é abstrata: PermissionCheckEvent e ProjectLifecycleEvent
-  herdam dela — a API expõe a hierarquia por type() e describe()
+  sem banco próprio: a hierarquia AuditEvent completa, a tabela e o arquivo
+  texto vivem no audit-service (ADR-010); aqui ficam só AuditEvent e
+  PermissionCheckEvent, o evento que o listener monta e envia
 ```
 
 ---
@@ -178,7 +180,7 @@ A interface `Mapper<I, O>` fica em `shared/domain/` e é reutilizada por todos o
 
 **Serialização do 1-N sem referência circular.** `ProjectResponse` embute os filhos, e `RoleResponse`/`RouteResponse` expõem o pai como `projectId` (UUID), não como objeto. O ciclo se fecha do lado do filho, o que dispensa `@JsonIgnore` ou `@JsonManagedReference` — a decisão está no formato do DTO, não em anotação de serialização.
 
-**Um DTO para toda a hierarquia de `AuditEvent`.** `AuditEventResponse` serve `PermissionCheckEvent` e `ProjectLifecycleEvent`: o que distingue as subclasses sai por `type()` e `describe()`, ambos polimórficos. A API expõe a herança sem um DTO por subclasse, e uma subclasse nova não muda o controller nem o mapper.
+**Um DTO para toda a hierarquia de `AuditEvent`.** No `audit-service`, `AuditEventResponse` serve `PermissionCheckEvent` e `ProjectLifecycleEvent`: o que distingue as subclasses sai por `type()` e `describe()`, ambos polimórficos. A API expõe a herança sem um DTO por subclasse, e uma subclasse nova não muda o controller nem o mapper. O monolito recebe `type` e `description` prontos e só os repassa (`AuditTrailEntry`).
 
 ---
 
@@ -199,7 +201,7 @@ Trocar o banco de dados exige apenas um novo adapter — o use case não muda.
 
 **A porta é burra; filtro e ordenação ficam no use case.** `ProjectRepository` expõe só `save`, `findById`, `findAll` e `existsById`. Quem filtra por `deletedAt`, por trecho de nome, por método HTTP e quem ordena é o use case (`SearchProjectsUseCase`, `FindProjectRoutesUseCase`). Isso mantém o adapter in-memory e o adapter JPA com a mesma superfície, e concentra a regra de leitura onde ela é testável sem banco. A contrapartida é que consultas que precisem descer para o SQL (paginação, agregação) exigem ampliar a porta — na etapa 4 as consultas derivadas do `JpaRepository` entram por baixo do adapter, sem mudar o use case.
 
-**Exceção: o `audit` filtra no banco.** A trilha de auditoria cresce sem limite, e filtrar em memória carregava a tabela inteira a cada consulta. A porta `AuditEventRepository` expõe `search` e `searchDenied` com os filtros como parâmetros, e o adapter os resolve em JPQL — ver ADR-009. O `project` continua na regra geral porque o volume por cliente é pequeno.
+**Exceção: a trilha de auditoria filtra no banco.** Ela cresce sem limite, e filtrar em memória carregava a tabela inteira a cada consulta. No `audit-service`, a porta `AuditEventRepository` expõe `search` e `searchDenied` com os filtros como parâmetros, e o adapter os resolve em JPQL — ver ADR-009. O módulo `audit` do monolito só repassa os filtros ao serviço pela porta `AuditTrail` (ADR-010). O `project` continua na regra geral porque o volume por cliente é pequeno.
 
 `ProjectRepository` também não expõe `deleteById`: a remoção é soft delete e é comportamento do agregado (`Project.delete()`); uma remoção física na porta permitiria contorná-lo por fora do domínio.
 
@@ -538,6 +540,8 @@ Entidades sem regra de negócio própria (`Plan`, hoje) podem continuar com `@Da
 
 **Status:** aceito na etapa 4 da disciplina de Spring Boot (migrations `V5`–`V8`).
 
+> Desde 30/09/2026 (ADR-010), a tabela `audit_events`, a herança `SINGLE_TABLE` e os `CHECK` abaixo existem só no `audit_db` do `audit-service` (a `V1` dele é cópia da `V8`). A `V10` do monolito apagou a tabela do banco principal.
+
 ### Onde há FK e onde não há
 
 > A migration `V9` acrescentou `role_routes`, com FK para `roles` **e** para `routes`, ambas `ON DELETE CASCADE` — as duas pontas são do mesmo agregado, então valem as mesmas razões de `roles` e `routes`. Ver ADR-007.
@@ -659,7 +663,7 @@ A mudança foi feita antes da etapa 2 ganhar Feign, Dockerfiles e Config Server,
 
 ## ADR-009: a consulta da trilha de auditoria desce para o banco, em JPQL
 
-**Status:** aceito na etapa 1 da disciplina de microsserviços.
+**Status:** aceito na etapa 1 da disciplina de microsserviços. Desde 30/09/2026 as consultas existem só no `audit-service`, copiadas na extração; o monolito as removeu junto com a tabela (ADR-010).
 
 **Contexto:** até aqui, `GET /audit-events` carregava todos os eventos (ou todos os de um projeto)
 e o use case filtrava `type` e `onlyDenied` num stream — a regra geral "a porta é burra" da seção
@@ -714,6 +718,52 @@ Três detalhes de implementação que não são óbvios:
   com a aplicação no ar (sem filtro, período, tipo em minúsculas, `onlyDenied` com
   `PROJECT_LIFECYCLE` e período invertido). O teste de integração ficou para o `audit-service`, que é
   onde esse código passa a morar na etapa 2.
+
+---
+
+## ADR-010: a persistência do `audit` sai do monolito
+
+**Status:** aceito em 30/09/2026, na etapa 2 da disciplina de microsserviços (migration `V10`).
+
+**Contexto:** com a gravação e a consulta da trilha passando pelo `audit-service`, a tabela
+`audit_events` do banco principal parou de receber eventos e de ser lida. O código que a servia virou
+código morto:
+- as entidades JPA da herança `SINGLE_TABLE`;
+- os repositórios JPQL do ADR-009 e o adapter;
+- as portas `AuditEventRepository` e `AuditEventJournal`;
+- o `AuditEventFileWriter` e o `AuditDemoRunner`.
+
+**Decisão:** apagar esse código e a tabela. É o último passo do Strangler Fig para o `audit`. Enquanto o
+caminho antigo existir, não fica claro qual dos dois vale, e quem mexer depois pode religá-lo sem
+perceber. No monolito fica só o necessário para falar com o serviço:
+- o `AuditLogListener`;
+- a consulta (`SearchAuditEventsUseCase` e o controller);
+- a porta `AuditTrail`, com o modelo de leitura `AuditTrailEntry`;
+- o cliente OpenFeign.
+
+- A migration é nova (`V10__drop_audit_events_table.sql`). A `V8` não é editada nem apagada: o Flyway
+  guarda o checksum de cada migration aplicada e acusaria a diferença em todo banco que já a rodou.
+- `AuditEvent` e `PermissionCheckEvent` ficam, porque são o evento que o listener monta e a porta
+  recebe. `ProjectLifecycleEvent` e `LifecycleAction` saem do monolito, porque só o `AuditDemoRunner`
+  os criava. Continuam no `audit-service`.
+
+**Os eventos antigos não foram copiados para o `audit_db`.** O banco principal só tinha dados de
+desenvolvimento: 6 validações de teste na máquina do autor. Num sistema em produção, a ordem seria
+outra: primeiro copiar as linhas para o banco do serviço, com um job de migração (o Spring Batch da
+etapa 4 serve para isso), e só depois rodar o `DROP`.
+
+**O que a disciplina de Spring Boot entregou continua acessível.** A herança `SINGLE_TABLE`, o
+`AuditDemoRunner` e o arquivo texto foram entregas daquela disciplina. A evidência dela é a tag
+`etapa-4`, que continua apontando para o código como foi entregue. A herança JPA e o arquivo texto
+continuam funcionando no `audit-service`, para onde foram copiados na extração.
+
+**Consequências:**
+
+- O `permission-service` não guarda dado de auditoria nenhum. Toda consulta depende do `audit-service`
+  no ar e responde `503` quando ele não está.
+- O índice parcial do ADR-009 e os `CHECK` do ADR-004 passam a existir só no `audit_db`.
+- O `docs/DER.pdf` ainda mostra `audit_events` no banco principal; precisa ser corrigido quando o
+  diagrama for refeito.
 
 ---
 
@@ -833,18 +883,15 @@ permission-service/src/main/java/com/saas/permissions/
 │       ├── dto/           # ValidatePermissionRequest.java, PermissionValidationResponse.java
 │       └── mapper/        # ValidatePermissionMapper.java, PermissionValidationResponseMapper.java
 │
-└── audit/                 # implementado na disciplina de Spring Boot
-    ├── domain/            # AuditEvent.java (abstrata), PermissionCheckEvent.java,
-    │                      # ProjectLifecycleEvent.java, LifecycleAction.java,
-    │                      # AuditEventRepository.java e AuditEventJournal.java (portas),
-    │                      # AuditTrail.java (porta de gravação e consulta no audit-service),
-    │                      # AuditTrailEntry.java (modelo de leitura da consulta)
+└── audit/                 # implementado na disciplina de Spring Boot; desde 30/09/2026 é
+    │                      # cliente do audit-service, sem banco próprio (ADR-010)
+    ├── domain/            # AuditEvent.java (abstrata) e PermissionCheckEvent.java (o evento
+    │                      # enviado), AuditTrail.java (porta de gravação e consulta no
+    │                      # audit-service), AuditTrailEntry.java (modelo de leitura)
+    │   └── exception/     # InvalidAuditPeriodException.java, AuditTrailUnavailableException.java
     ├── application/       # AuditLogListener.java (Observer), SearchAuditEventsUseCase.java
     │   └── query/         # SearchAuditEventsQuery.java
-    ├── infrastructure/    # AuditEventJpaEntity (SINGLE_TABLE) + PermissionCheckEventJpaEntity
-    │   │                  # + ProjectLifecycleEventJpaEntity, JpaAuditEventRepository,
-    │   │                  # AuditEventRepositoryAdapter, AuditEventFileWriter, AuditDemoRunner,
-    │   │                  # UnsupportedAuditEventException
+    ├── infrastructure/
     │   └── client/        # AuditClient.java (@FeignClient), AuditTrailClientAdapter.java
     │       └── dto/       # RegisterPermissionCheckRequest.java, AuditEventResponse.java (contrato)
     └── api/               # AuditEventController.java

@@ -206,6 +206,8 @@ Entidade associativa entre `Role` e `Route` (`project/domain/roleroute`). É ela
 
 ## `audit`
 
+Desde 30/09/2026 a trilha mora no `audit-service`, com banco próprio (`audit_db`), e o modelo completo abaixo está lá. No `permission-service` ficam só `AuditEvent` e `PermissionCheckEvent`, o evento que o `AuditLogListener` monta e envia, e o modelo de leitura `AuditTrailEntry`. `ProjectLifecycleEvent` existe só no serviço. Ver `docs/ARCHITECTURE.md` → ADR-010.
+
 ### AuditEvent (abstrata)
 
 Raiz da trilha de auditoria. É abstrata porque a trilha guarda tipos heterogêneos de evento, cada um com campos próprios — a herança descreve o domínio, não existe só para atender a requisito.
@@ -243,6 +245,10 @@ Mudança estrutural em um projeto.
 | `performedBy` | UUID | FK → `Client` responsável |
 
 `type()` = `PROJECT_LIFECYCLE`.
+
+### AuditTrailEntry
+
+Modelo de leitura do `permission-service` (`audit/domain`): uma linha da trilha **como o `audit-service` a descreve** — `id`, `type`, `projectId`, `occurredAt` (texto ISO-8601) e `description`. É o que a porta `AuditTrail.search` devolve. Não é um `AuditEvent` porque a resposta do serviço não traz os campos de cada subclasse (`routePath`, `roleName`...), então não dá para reconstruir o evento — e o monolito não precisa: só repassa a consulta.
 
 ---
 
@@ -313,16 +319,21 @@ validação.
 
 **Onde a mudança bate:**
 
-1. Migration `V10` — `ALTER TABLE audit_events ADD COLUMN user_id VARCHAR(120)`, mais um índice
-   (`user_id`, `occurred_at DESC`), que é como a consulta de investigação vai filtrar.
-2. `PermissionCheckEvent.userId` e `describe()` passando a citá-lo.
-3. `PermissionCheckEventJpaEntity` e o `AuditEventRepositoryAdapter` nos dois sentidos.
-4. `ValidatePermissionRequest` → `PermissionCheckRequest` → `PermissionValidatedEvent` →
-   `AuditLogListener`: é o mesmo caminho que `projectId` e `httpMethod` percorreram na etapa 4, e serve
-   de roteiro.
-5. `SearchAuditEventsQuery` + `GET /audit-events?userId=` para consultar, com um filtro
-   `(:userId IS NULL OR event.userId = :userId)` a mais nas consultas JPQL do ADR-009.
-6. Coleção Postman e `docs/API.md`.
+Desde 30/09/2026 a trilha mora no `audit-service` (ADR-010), então a mudança atravessa os dois projetos:
+
+1. **`audit-service`:** migration `V2` — `ALTER TABLE audit_events ADD COLUMN user_id VARCHAR(120)`,
+   mais um índice (`user_id`, `occurred_at DESC`), que é como a consulta de investigação vai filtrar.
+2. **`audit-service`:** `PermissionCheckEvent.userId`, `describe()` passando a citá-lo,
+   `PermissionCheckEventJpaEntity`, o `AuditEventRepositoryAdapter` nos dois sentidos e o
+   `RegisterPermissionCheckRequest` do `POST`.
+3. **`permission-service`:** `ValidatePermissionRequest` → `PermissionCheckRequest` →
+   `PermissionValidatedEvent` → `AuditLogListener` → `PermissionCheckEvent` → DTO de contrato do
+   cliente Feign. É o mesmo caminho que `projectId` e `httpMethod` percorreram na etapa 4, e serve de
+   roteiro.
+4. **Os dois:** `GET /audit-events?userId=` — filtro `(:userId IS NULL OR event.userId = :userId)` a
+   mais nas consultas JPQL do serviço, e o parâmetro repassado pelo `AuditClient` e pela porta
+   `AuditTrail` do monolito.
+5. Coleção Postman e `docs/API.md`.
 
 **Ressalva de privacidade:** o campo passa a guardar um identificador de pessoa vindo de outro sistema.
 Vale registrar por quanto tempo a trilha é retida e evitar aceitar ali dados que identifiquem além do
