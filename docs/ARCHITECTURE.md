@@ -26,6 +26,26 @@ com.saas.audit/
 
 **Extração concluída (30/09/2026).** A gravação e a consulta passam pelo serviço, e o monolito não guarda mais nada da trilha. Na gravação, o `AuditLogListener` do monolito traduz o `PermissionValidatedEvent` em `PermissionCheckEvent` e o entrega à porta `AuditTrail`, implementada por `AuditTrailClientAdapter` sobre o cliente OpenFeign `AuditClient` (`audit/infrastructure/client/`). O listener roda na thread da validação de permissão, então duas proteções impedem que a auditoria derrube a validação: timeout curto no cliente `audit-service` (1s para conectar, 2s para responder, no `application.yml`; o default do Feign é 60s) e um `try/catch` no listener. O adapter só traduz a `FeignException` para a `AuditTrailUnavailableException` da porta; quem decide que perder o evento é aceitável e quebrar a validação não é, é a camada `application`. Com o serviço fora do ar, a validação responde normalmente e o evento **se perde**, com um `WARN` no log — a limitação que a etapa 4 resolve trocando o Feign da gravação por uma fila no RabbitMQ. Na consulta, o `GET /audit-events` do monolito valida os filtros e o período (os `400` saem daqui, sem chamar a rede) e repassa ao serviço pela mesma porta `AuditTrail`, que devolve o modelo de leitura `AuditTrailEntry` — a resposta do serviço não traz dados para reconstruir um `PermissionCheckEvent`. Serviço fora do ar vira `503`: a `AuditTrailUnavailableException` estende a `ServiceUnavailableException` do `shared`, mapeada pelo `GlobalExceptionHandler` (o `shared` não pode importar do `audit`, que depende dele). A persistência local do módulo — entidades JPA, consultas do ADR-009, arquivo texto, `AuditDemoRunner` — foi apagada e a migration `V10` removeu a tabela `audit_events` do banco principal (ADR-010).
 
+**Direção futura: um serviço de auditoria genérico (registrada em 01/10/2026, fora do escopo atual).** A
+intenção do autor é tornar o `audit-service` um sistema de auditoria próprio e independente, em
+repositório separado, do qual o `permission-service` seria só um dos clientes, ao lado de outros
+projetos. Separar o repositório é barato: não há import cruzado entre os dois projetos, e
+`git subtree split --prefix=audit-service` leva a pasta com o histórico (ADR-008). Torná-lo genérico é
+redesenho, porque o modelo de hoje fala a língua deste produto:
+
+| Hoje | Genérico |
+|---|---|
+| Tipos fixos `PERMISSION_CHECK`/`PROJECT_LIFECYCLE`, com `CHECK` no banco | `type` livre, definido por quem envia |
+| Colunas de permissão (`route_path`, `role_name`, `granted`...) | Um envelope comum (`source`, `type`, `occurredAt`, `actor`, `description`) e o resto num `payload` JSON (`jsonb`) |
+| `POST /audit-events/permission-checks` | `POST /events`, um endpoint para qualquer tipo |
+| Sem autenticação: só a rede interna chama | Chave de API por sistema cliente, com isolamento dos dados de cada cliente |
+| Filtro `onlyDenied` | Filtros por `source`, `type` e período, e filtro dentro do `payload` |
+
+Do lado do `permission-service`, a troca fica contida: o resto do módulo só conhece a porta
+`AuditTrail`, então mudam apenas o `AuditTrailClientAdapter` e os DTOs de `client/dto/`. **Proposta
+para a etapa 4:** desenhar a mensagem do RabbitMQ já nesse envelope genérico. O custo é o mesmo de um
+formato específico, e o formato fica pronto para a evolução.
+
 ---
 
 ## Estrutura interna de cada módulo
