@@ -8,7 +8,5 @@ RUN --mount=type=cache,target=/root/.m2 mvn clean package -q
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
-EXPOSE 8080 5005
-ENTRYPOINT ["java", \
-  "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005", \
-  "-jar", "app.jar"]
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
