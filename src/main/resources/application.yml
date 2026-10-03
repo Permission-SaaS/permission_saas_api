@@ -1,20 +1,20 @@
+# Configuração comum a todos os ambientes. O que muda entre eles (banco,
+# endereço do audit-service, segredos, log de SQL) fica em application-dev.yml
+# e application-prod.yml.
 spring:
   application:
     name: permission_saas
 
+  # Sem SPRING_PROFILES_ACTIVE, sobe como desenvolvimento. O Docker Compose ativa o prod.
+  profiles:
+    default: dev
+
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/permissions_saas}
-    username: ${SPRING_DATASOURCE_USERNAME:saas}
-    password: ${SPRING_DATASOURCE_PASSWORD:saas123}
     driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
 
   flyway:
     enabled: true
@@ -33,25 +33,12 @@ spring:
             connect-timeout: 1000
             read-timeout: 2000
 
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: ${GOOGLE_CLIENT_ID}
-            client-secret: ${GOOGLE_CLIENT_SECRET}
-            scope: openid, profile, email
-
 app:
   jwt:
-    secret: ${JWT_SECRET}
     expiration-ms: 3600000
-  swagger:
-    username: ${SWAGGER_USERNAME:admin}
-    password: ${SWAGGER_PASSWORD:admin123}
-    
+
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
   servlet:
     context-path: /
 
@@ -63,7 +50,3 @@ management:
 
 springdoc:
   show-actuator: true
-
-audit:
-  service:
-    url: ${AUDIT_SERVICE_URL:http://localhost:8081}

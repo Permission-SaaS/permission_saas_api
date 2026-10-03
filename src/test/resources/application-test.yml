@@ -10,3 +10,12 @@ spring:
     database-platform: org.hibernate.dialect.H2Dialect
   flyway:
     enabled: false
+
+app:
+  swagger:
+    username: test
+    password: test
+
+audit:
+  service:
+    url: http://localhost:8081

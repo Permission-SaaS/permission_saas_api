@@ -1,0 +1,36 @@
+# Desenvolvimento: a aplicação roda na máquina (IDE ou ./mvnw) e acha o banco e o
+# audit-service em localhost. Toda variável tem valor padrão, então nenhuma é
+# obrigatória, mas qualquer uma pode ser trocada por fora (ex.: DB_URL com outra porta).
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/permissions_saas}
+    username: ${DB_USERNAME:saas}
+    password: ${DB_PASSWORD:saas123}
+
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  # OAuth2/JWT não são usados pelo fluxo implementado (fora de escopo), mas o client
+  # do Google precisa de um valor não vazio para o contexto subir.
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:dummy-client-id}
+            client-secret: ${GOOGLE_CLIENT_SECRET:dummy-client-secret}
+            scope: openid, profile, email
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-only-secret}
+  swagger:
+    username: ${SWAGGER_USERNAME:admin}
+    password: ${SWAGGER_PASSWORD:admin123}
+
+audit:
+  service:
+    url: ${AUDIT_SERVICE_URL:http://localhost:8081}

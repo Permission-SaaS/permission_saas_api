@@ -1,0 +1,32 @@
+# Produção: tudo o que depende do ambiente vem de variável de ambiente, sem valor
+# padrão. Se faltar alguma, a aplicação não sobe — melhor do que subir apontando
+# para o banco ou o serviço errado. No Docker Compose, quem fornece os valores é
+# o docker-compose.yml (e o .env, para os segredos).
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    show-sql: false
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: openid, profile, email
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+  swagger:
+    username: ${SWAGGER_USERNAME}
+    password: ${SWAGGER_PASSWORD}
+
+audit:
+  service:
+    url: ${AUDIT_SERVICE_URL}
