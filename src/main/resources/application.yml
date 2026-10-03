@@ -3,7 +3,7 @@
 # e application-prod.yml.
 spring:
   application:
-    name: permission_saas
+    name: permission-service
 
   # Sem SPRING_PROFILES_ACTIVE, sobe como desenvolvimento. O Docker Compose ativa o prod.
   profiles:

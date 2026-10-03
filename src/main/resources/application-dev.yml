@@ -2,6 +2,11 @@
 # audit-service em localhost. Toda variável tem valor padrão, então nenhuma é
 # obrigatória, mas qualquer uma pode ser trocada por fora (ex.: DB_URL com outra porta).
 spring:
+  # Em desenvolvimento a aplicação não depende do Config Server.
+  cloud:
+    config:
+      enabled: false
+
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/permissions_saas}
     username: ${DB_USERNAME:saas}

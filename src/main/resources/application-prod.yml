@@ -1,15 +1,15 @@
-# Produção: tudo o que depende do ambiente vem de variável de ambiente, sem valor
-# padrão. Se faltar alguma, a aplicação não sobe — melhor do que subir apontando
-# para o banco ou o serviço errado. No Docker Compose, quem fornece os valores é
-# o docker-compose.yml (e o .env, para os segredos).
+# Produção: a configuração de ambiente (endereço do banco e do audit-service, log
+# de SQL) vem do Config Server, em config-repo/permission-service-prod.yml. Os
+# segredos vêm de variáveis de ambiente, sem valor padrão. Se o Config Server não
+# responder ou faltar uma variável, a aplicação não sobe — melhor do que subir
+# apontando para o banco ou o serviço errado.
 spring:
+  config:
+    import: configserver:${CONFIG_SERVER_URL}
+
   datasource:
-    url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
-
-  jpa:
-    show-sql: false
 
   security:
     oauth2:
@@ -26,7 +26,3 @@ app:
   swagger:
     username: ${SWAGGER_USERNAME}
     password: ${SWAGGER_PASSWORD}
-
-audit:
-  service:
-    url: ${AUDIT_SERVICE_URL}
