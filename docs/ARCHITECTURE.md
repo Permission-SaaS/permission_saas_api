@@ -4,7 +4,7 @@
 
 Um **monolito modular**: um único processo/deploy, mas organizado em módulos independentes por domínio de negócio. Cada módulo é um mini-sistema autocontido que não conhece os detalhes internos dos outros.
 
-Desde a disciplina de microsserviços, o sistema é **um monolito modular mais um serviço extraído dele**: o `permission-service/` (a aplicação principal, com `identity`, `billing`, `project`, `permission` e `audit`) e o `audit-service/`. A extração segue o padrão *Strangler Fig* — uma capacidade de cada vez, começando pela mais desacoplada — em vez de reescrever o monolito inteiro em serviços. Ver "O `audit-service`" abaixo e o ADR-008.
+Desde a disciplina de microsserviços, o sistema é **um monolito modular mais um serviço extraído dele**: o `permission-service/` (a aplicação principal, com `identity`, `billing`, `project`, `permission` e `audit`) e o `audit-service/`. A extração segue o padrão *Strangler Fig* — uma capacidade de cada vez, começando pela mais desacoplada — em vez de reescrever o monolito inteiro em serviços. Ver "O `audit-service`" abaixo e o ADR-008. Desde a etapa 3, um terceiro projeto, o `config-server/`, serve a configuração de ambiente dos dois serviços no profile `prod` (ADR-011 e ADR-012), e os cinco componentes sobem juntos pelo Docker Compose.
 
 ---
 
@@ -636,6 +636,10 @@ permission_saas/
 Cada projeto compila sozinho (`./mvnw` dentro da pasta) e o `docker-compose.yml` da raiz é o que
 integra os três.
 
+Desde 02/10/2026, a raiz também guarda o `config-repo/`: a configuração de todas as aplicações,
+servida pelo `config-server` (ADR-012). Fica fora de `config-server/` porque não é código do servidor;
+num ambiente real seria um repositório Git à parte.
+
 **Alternativa descartada — `pom` agregador na raiz.** Um agregador só se paga quando há build único
 ou código compartilhado entre os módulos, e aqui não há nenhum dos dois (ver "Duplicação
 consciente" abaixo). Acrescentaria um `pom.xml` na raiz e a tentação de um módulo `common`, que
@@ -789,7 +793,7 @@ continuam funcionando no `audit-service`, para onde foram copiados na extração
 
 ## ADR-011: profiles `dev` e `prod`, com `prod` sem valor padrão
 
-**Status:** aceito em 02/10/2026, na etapa 3 da disciplina de microsserviços.
+**Status:** aceito em 02/10/2026, na etapa 3 da disciplina de microsserviços. **Revisado no mesmo dia pelo ADR-012:** no `prod`, os endereços (`DB_URL`, `AUDIT_SERVICE_URL`) deixaram de ser variáveis de ambiente e passaram a vir do Config Server; o resto continua valendo.
 
 **Contexto:** até a etapa 2, cada aplicação tinha um só `application.yml`, com
 `${SPRING_DATASOURCE_URL:localhost...}` e valores padrão de desenvolvimento. Isso trazia dois problemas:
@@ -828,6 +832,50 @@ variável.
 - As senhas dos bancos continuam escritas no `docker-compose.yml`, ao lado dos containers Postgres que
   as definem. São credenciais locais; num ambiente real viriam de um cofre de segredos, e o Config
   Server da etapa 3 centraliza o restante da configuração.
+
+---
+
+## ADR-012: Config Server com backend em arquivos, só no profile `prod`
+
+**Status:** aceito em 02/10/2026, na etapa 3 da disciplina de microsserviços.
+
+**Contexto:** o enunciado da etapa 3 pede configuração centralizada com Spring Cloud Config Server.
+Depois do ADR-011, a configuração de ambiente do `prod` (endereço do banco, do `audit-service`, log de
+SQL) estava espalhada em variáveis do `docker-compose.yml`, uma por serviço.
+
+**Decisão:**
+
+- **Projeto irmão `config-server/`** (porta 8888, `@EnableConfigServer`), no mesmo layout do ADR-008.
+- **Backend `native`, lido do disco**, a partir do `config-repo/` na raiz. O Compose monta a pasta como
+  volume somente leitura, então mudar um arquivo e reiniciar o serviço basta, sem rebuild. O backend
+  Git, o padrão do Spring Cloud Config, exigiria um repositório à parte ou o `.git` dentro do
+  container; para um projeto só, o versionamento já vem do repositório do código.
+- **O que vai para o `config-repo/`:** o que muda com o ambiente e não é segredo. São os endereços
+  (`spring.datasource.url`, `audit.service.url`) em `<serviço>-prod.yml` e o que vale para os dois
+  serviços (log de SQL desligado) em `application-prod.yml`, um arquivo que configura os dois de uma
+  vez.
+- **O que não vai:** senhas e segredos. O Config Server devolve a configuração em texto puro para
+  quem pedir (`GET /permission-service/prod`); usuário e senha do banco, Swagger, Google e JWT
+  continuam em variáveis de ambiente, como no ADR-011.
+- **Só o `prod` usa o Config Server.** O `application-prod.yml` de cada serviço importa
+  `configserver:${CONFIG_SERVER_URL}`, sem `optional:`. Se o servidor não responder, o serviço não
+  sobe (`ConfigClientFailFastException`). O `dev` e o `test` desligam o cliente
+  (`spring.cloud.config.enabled: false`) e seguem com os arquivos locais. Rodar na máquina não exige
+  um terceiro processo.
+- **Nome da aplicação principal:** `spring.application.name` passou de `permission_saas` para
+  `permission-service`, porque é por esse nome que o Config Server escolhe o arquivo.
+
+**Consequências:**
+
+- O Config Server vira dependência de partida no `prod`: o Compose só sobe os dois serviços depois que
+  ele está `healthy`. Com os serviços já no ar, a queda dele não afeta nada, porque a configuração só é
+  lida na subida.
+- Mudança de configuração exige reiniciar o serviço. Atualizar sem reiniciar (`@RefreshScope` com
+  `/actuator/refresh`, ou Spring Cloud Bus) fica como trabalho futuro.
+- O Config Server não tem autenticação. Ele só é alcançável pela rede do Compose e pela porta 8888 da
+  máquina local, e não guarda segredo.
+- A configuração do `dev` continua dentro de cada projeto. Centralizar também o `dev` obrigaria quem
+  desenvolve a subir o Config Server antes de qualquer serviço.
 
 ---
 

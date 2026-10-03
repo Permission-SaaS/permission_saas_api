@@ -1,6 +1,6 @@
 # API — Permission SaaS
 
-Cada endpoint implementado: método, path, request/response e um exemplo de `curl`. As seções por módulo descrevem a aplicação principal (`permission-service`, porta 8080); o serviço extraído tem sua própria seção no fim, [`audit-service`](#audit-service--serviço-independente-porta-8081).
+Cada endpoint implementado: método, path, request/response e um exemplo de `curl`. As seções por módulo descrevem a aplicação principal (`permission-service`, porta 8080); o serviço extraído tem sua própria seção no fim, [`audit-service`](#audit-service--serviço-independente-porta-8081), seguida do [`config-server`](#config-server--configuração-centralizada-porta-8888).
 
 Uma coleção Postman com todos os endpoints, encadeados por variáveis (`clientId` → `planId` → `apiKey` → `projectId`) e com asserções de status, está versionada em `docs/postman/permission-saas.postman_collection.json`. Para rodar a coleção inteira sem abrir o Postman:
 
@@ -642,4 +642,37 @@ Cada evento gravado também é acrescentado como uma linha em `logs/audit-events
 curl -X POST http://localhost:8081/audit-events/permission-checks \
   -H "Content-Type: application/json" \
   -d '{"projectId":"11111111-1111-1111-1111-111111111111","occurredAt":"2026-09-28T20:00:00Z","routePath":"/produtos","httpMethod":"GET","roleName":"ADMIN","granted":false,"reason":"invalid or inactive api key","durationMs":3.5}'
+```
+
+---
+
+## `config-server` — configuração centralizada (porta 8888)
+
+Não é API de negócio: é o endpoint padrão do Spring Cloud Config, que os dois serviços chamam na subida quando rodam no profile `prod` (ADR-012 em `docs/ARCHITECTURE.md`). Serve os arquivos de `config-repo/`.
+
+### `GET /{aplicação}/{profile}`
+
+Devolve a configuração de uma aplicação num profile. A resposta lista as fontes (`propertySources`) que se aplicam, da mais específica para a mais geral; quando duas definem a mesma propriedade, vale a primeira.
+
+**Response** `200 OK` (resumida):
+
+```json
+{
+  "name": "permission-service",
+  "profiles": ["prod"],
+  "propertySources": [
+    { "name": "file:/config-repo/permission-service-prod.yml",
+      "source": { "spring.datasource.url": "jdbc:postgresql://postgres:5432/permissions_saas",
+                  "audit.service.url": "http://audit-service:8081" } },
+    { "name": "file:/config-repo/application-prod.yml",
+      "source": { "spring.jpa.show-sql": false } }
+  ]
+}
+```
+
+Um nome de aplicação sem arquivo próprio não dá erro: devolve só as fontes gerais (`application-<profile>.yml`). Pelo Postman: pasta `config-server (8888)`.
+
+```bash
+curl http://localhost:8888/permission-service/prod
+curl http://localhost:8888/audit-service/prod
 ```
