@@ -787,9 +787,53 @@ continuam funcionando no `audit-service`, para onde foram copiados na extração
 
 ---
 
+## ADR-011: profiles `dev` e `prod`, com `prod` sem valor padrão
+
+**Status:** aceito em 02/10/2026, na etapa 3 da disciplina de microsserviços.
+
+**Contexto:** até a etapa 2, cada aplicação tinha um só `application.yml`, com
+`${SPRING_DATASOURCE_URL:localhost...}` e valores padrão de desenvolvimento. Isso trazia dois problemas:
+
+- o mesmo arquivo servia à máquina do desenvolvedor e ao container, e um container sem a variável subia
+  apontando para `localhost`, que dentro dele é o próprio container;
+- o `.env` misturava os segredos do Compose com endereços para rodar na máquina. Como o Spring liga
+  `SPRING_DATASOURCE_*` direto a `spring.datasource.*`, exportar o `.env` num terminal fazia o
+  `audit-service` conectar no banco da aplicação principal.
+
+**Decisão:** três arquivos por aplicação.
+
+- `application.yml` guarda o que é igual em todo ambiente e declara `spring.profiles.default: dev`.
+- `application-dev.yml` tem valor padrão para tudo, apontando para `localhost`, e liga o log de SQL.
+  Rodar na máquina não exige nenhuma variável.
+- `application-prod.yml` lê tudo de variável de ambiente, **sem valor padrão**, e desliga o log de
+  SQL. O Compose ativa esse profile e fornece as variáveis.
+
+As variáveis passam a se chamar `DB_URL`, `DB_USERNAME` e `DB_PASSWORD`, os nomes do enunciado, e o
+`.env` fica só com o que o Compose repassa: os segredos e `POSTGRES_HOST_PORT`.
+
+**Por que `prod` sem valor padrão:** uma variável esquecida deve impedir a subida, e não fazer o
+serviço subir apontando para o lugar errado. O custo é a mensagem de erro, que nem sempre nomeia a
+variável. Sem `DB_URL`, o Hikari acusa `'url' must start with "jdbc"`; sem `AUDIT_SERVICE_URL`, o
+Feign acusa `http://${AUDIT_SERVICE_URL} is malformed`.
+
+**Por que o Compose roda `prod`:** é o ambiente que simula a execução real, com a mesma imagem e a
+configuração vinda de fora. O debug remoto continua ligado ali, mas pelo `JAVA_TOOL_OPTIONS` do
+`docker-compose.yml`, e não pela imagem ou pelo profile. Num deploy de verdade, basta não definir a
+variável.
+
+**Consequências:**
+
+- O profile `test` (testes com H2) não herda nada de `dev`. O `application-test.yml` traz o que os
+  testes precisam: o usuário do Swagger e o `audit.service.url`.
+- As senhas dos bancos continuam escritas no `docker-compose.yml`, ao lado dos containers Postgres que
+  as definem. São credenciais locais; num ambiente real viriam de um cofre de segredos, e o Config
+  Server da etapa 3 centraliza o restante da configuração.
+
+---
+
 ## Segurança do Swagger UI
 
-`SecurityConfig` deixa todo o restante da API com `permitAll()` (autenticação real de cliente é trabalho futuro, ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`), mas `/swagger-ui/**` e `/v3/api-docs/**` exigem HTTP Basic com um usuário fixo em memória (`InMemoryUserDetailsManager`), configurado via `app.swagger.username` / `app.swagger.password` (env vars `SWAGGER_USERNAME` / `SWAGGER_PASSWORD`, default `admin` / `admin123`). `/actuator/**` continua liberado.
+`SecurityConfig` deixa todo o restante da API com `permitAll()` (autenticação real de cliente é trabalho futuro, ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`), mas `/swagger-ui/**` e `/v3/api-docs/**` exigem HTTP Basic com um usuário fixo em memória (`InMemoryUserDetailsManager`), configurado via `app.swagger.username` / `app.swagger.password` (env vars `SWAGGER_USERNAME` / `SWAGGER_PASSWORD`; default `admin` / `admin123` só no profile `dev`, obrigatórias no `prod` — ADR-011). `/actuator/**` continua liberado.
 
 **Por quê:** a documentação interativa expõe todos os endpoints e facilita descoberta/abuso se ficar pública; como login/JWT de cliente está fora de escopo desta entrega, HTTP Basic com um usuário fixo é a menor solução que já impede acesso não autenticado ao Swagger sem implementar um fluxo de autenticação completo.
 
