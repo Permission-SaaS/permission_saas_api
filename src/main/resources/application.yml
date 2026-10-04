@@ -22,9 +22,9 @@ spring:
     ignore-migration-patterns: "*:missing,*:future"
     validate-on-migrate: false
 
-  # A gravação da auditoria roda na thread da validação de permissão: com o
-  # default do Feign (60s de leitura), um audit-service travado prenderia cada
-  # validação por um minuto.
+  # O Feign só serve a consulta da trilha (GET /audit-events): com o default dele
+  # (60s de leitura), um audit-service travado prenderia a requisição por um minuto
+  # antes do 503.
   cloud:
     openfeign:
       client:
@@ -33,9 +33,19 @@ spring:
             connect-timeout: 1000
             read-timeout: 2000
 
+  # A publicação da auditoria roda na thread da validação de permissão: com o broker
+  # fora do ar, desiste em 1s em vez de prender a validação.
+  rabbitmq:
+    connection-timeout: 1s
+
 app:
   jwt:
     expiration-ms: 3600000
+
+# Fila em que a aplicação publica cada validação de permissão para o audit-service.
+audit:
+  messaging:
+    queue: audit.events
 
 server:
   port: ${SERVER_PORT:8080}

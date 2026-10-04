@@ -12,6 +12,11 @@ spring:
     username: ${DB_USERNAME:saas}
     password: ${DB_PASSWORD:saas123}
 
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    username: ${RABBITMQ_USERNAME:saas}
+    password: ${RABBITMQ_PASSWORD:saas123}
+
   jpa:
     show-sql: true
     properties:
