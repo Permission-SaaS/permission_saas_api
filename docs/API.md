@@ -537,7 +537,7 @@ curl "http://localhost:8080/projects/$PROJ/roles/$ROLE/routes?includeRevoked=tru
 
 ### `GET /audit-events`
 
-Lista a trilha de auditoria, do evento mais recente para o mais antigo. **Desde 30/09/2026 é um repasse:** a aplicação principal valida os filtros e repassa a consulta ao [`GET /audit-events` do `audit-service`](#get-audit-events-1) pelo cliente OpenFeign `AuditClient`. Os eventos chegam lá pelo Observer `AuditLogListener`, que reage ao `PermissionValidatedEvent` publicado a cada `POST /validate-permission` e os envia ao serviço — ver `docs/PATTERNS.md`.
+Lista a trilha de auditoria, do evento mais recente para o mais antigo. **Desde 30/09/2026 é um repasse:** a aplicação principal valida os filtros e repassa a consulta ao [`GET /audit-events` do `audit-service`](#get-audit-events-1) pelo cliente OpenFeign `AuditClient`. Os eventos chegam lá pelo Observer `AuditLogListener`, que reage ao `PermissionValidatedEvent` publicado a cada `POST /validate-permission` e publica cada validação na [fila `audit.events`](#mensageria--fila-auditevents-rabbitmq), consumida pelo serviço — ver `docs/PATTERNS.md`.
 
 **Query params** (todos opcionais, `SearchAuditEventsRequest`): `type` (`PERMISSION_CHECK` ou `PROJECT_LIFECYCLE`, sem diferenciar maiúsculas), `projectId` (UUID), `onlyDenied` (`true` devolve só as validações negadas), `from` e `to` (ISO-8601 com fuso, ex.: `2026-09-01T00:00:00Z`; os dois limites entram no resultado). Um limite sozinho vale como "a partir de" ou "até". `onlyDenied=true` com `type=PROJECT_LIFECYCLE` devolve lista vazia — evento de ciclo de vida nunca é negado.
 
@@ -567,7 +567,7 @@ Os filtros são aplicados pelo `audit-service`, no banco dele, por consulta JPQL
 { "status": 503, "error": "Service Unavailable", "message": "Audit service is unavailable", "timestamp": "..." }
 ```
 
-A pasta `audit-service fora do ar` do Postman reproduz o cenário inteiro: a validação de permissão segue respondendo `200` com o serviço parado, a consulta devolve este `503` e, com o serviço religado, a trilha mostra que o evento do período fora do ar se perdeu.
+A pasta `audit-service fora do ar` do Postman reproduz o cenário inteiro. Com o serviço parado, a validação de permissão segue respondendo `200`, a mensagem dela espera na fila e a consulta devolve este `503`. Com o serviço religado, a trilha mostra o evento do período fora do ar, que não se perdeu.
 
 ```bash
 curl "http://localhost:8080/audit-events?onlyDenied=true"
@@ -580,7 +580,7 @@ curl "http://localhost:8080/audit-events?onlyDenied=true&from=2026-09-01T00:00:0
 
 ## `audit-service` — serviço independente (porta 8081)
 
-A trilha de auditoria extraída como aplicação Spring Boot própria, com banco próprio (`audit_db`, porta 5433). Desde 30/09/2026 a aplicação principal chama os dois via OpenFeign: o `POST` a cada `POST /validate-permission` e o `GET` a cada consulta ao `GET /audit-events` dela. Também podem ser exercitados direto, pelo Postman (pasta `audit-service (8081)`) ou pelo Swagger UI em `http://localhost:8081/swagger-ui/index.html`.
+A trilha de auditoria extraída como aplicação Spring Boot própria, com banco próprio (`audit_db`, porta 5433). A aplicação principal chama o `GET` via OpenFeign a cada consulta ao `GET /audit-events` dela. A gravação chega pela [fila `audit.events`](#mensageria--fila-auditevents-rabbitmq) desde 03/10/2026; até então era o `POST`, que continua disponível para uso direto. Os dois podem ser exercitados direto, pelo Postman (pasta `audit-service (8081)`) ou pelo Swagger UI em `http://localhost:8081/swagger-ui/index.html`.
 
 Erros seguem o mesmo [formato padrão](#formato-padrão-de-erro) da aplicação principal. O serviço não tem autenticação: é chamado pela rede interna dos serviços, não por clientes.
 
@@ -643,6 +643,53 @@ curl -X POST http://localhost:8081/audit-events/permission-checks \
   -H "Content-Type: application/json" \
   -d '{"projectId":"11111111-1111-1111-1111-111111111111","occurredAt":"2026-09-28T20:00:00Z","routePath":"/produtos","httpMethod":"GET","roleName":"ADMIN","granted":false,"reason":"invalid or inactive api key","durationMs":3.5}'
 ```
+
+---
+
+## Mensageria — fila `audit.events` (RabbitMQ)
+
+Não é endpoint HTTP: é o contrato da mensagem que a aplicação principal publica a cada `POST /validate-permission` e que o `audit-service` consome para gravar a trilha (ADR-013 em `docs/ARCHITECTURE.md`). A publicação usa a exchange padrão, com a fila `audit.events` como *routing key*.
+
+**Mensagem** (`AuditMessage`, JSON): um envelope genérico, com os dados próprios do tipo de evento em `payload`.
+
+```json
+{
+  "source": "permission-service",
+  "type": "PERMISSION_CHECK",
+  "occurredAt": "2026-10-03T03:27:58.123Z",
+  "payload": {
+    "projectId": "11111111-1111-1111-1111-111111111111",
+    "routePath": "/users",
+    "httpMethod": "GET",
+    "roleName": "ADMIN",
+    "granted": false,
+    "reason": "invalid or inactive api key",
+    "durationMs": 3.5
+  }
+}
+```
+
+| Campo | Regra |
+|---|---|
+| `source`, `type` | obrigatórios. Hoje só `type: PERMISSION_CHECK` é aceito |
+| `occurredAt` | obrigatório, ISO-8601 em UTC |
+| `payload` | obrigatório. Para `PERMISSION_CHECK`, as mesmas regras do corpo do [`POST /audit-events/permission-checks`](#post-audit-eventspermission-checks), sem o `occurredAt`, que vem do envelope |
+
+**O que acontece com cada mensagem:**
+
+- **Válida:** gravada pelo mesmo caso de uso do `POST` e confirmada (*ack*); sai da fila.
+- **Com o `audit-service` fora do ar:** espera na fila, que é durável, até ele voltar.
+- **Inválida** (tipo desconhecido, payload fora das regras, JSON quebrado), **ou que falhou ao gravar 3 vezes seguidas:** vai para a fila `audit.events.dlq`, onde fica para conferência.
+
+**Como ver:** painel do RabbitMQ em `http://localhost:15672` (usuário `saas`, senha `saas123`), aba *Queues*. Pela API do painel, sem tirar as mensagens da fila:
+
+```bash
+curl -u saas:saas123 -H "Content-Type: application/json" \
+  -X POST http://localhost:15672/api/queues/%2F/audit.events/get \
+  -d '{"count":10,"ackmode":"ack_requeue_true","encoding":"auto"}'
+```
+
+No Postman, a pasta `audit-service fora do ar` faz isso com o consumidor parado e depois de religá-lo.
 
 ---
 

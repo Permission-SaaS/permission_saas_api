@@ -16,15 +16,19 @@ Aplicação Spring Boot própria (`audit-service/`, porta 8081), com as mesmas q
 com.saas.audit/
   domain/          AuditEvent e subclasses, AuditEventRepository e AuditEventJournal (portas), exception/
   application/     SearchAuditEventsUseCase (query/), RegisterPermissionCheckUseCase (command/)
-  infrastructure/  entidades JPA SINGLE_TABLE, consultas JPQL do ADR-009, AuditEventFileWriter
-  api/             AuditEventController, DTOs, mappers, GlobalExceptionHandler
+  infrastructure/  entidades JPA SINGLE_TABLE, consultas JPQL do ADR-009, AuditEventFileWriter,
+                   messaging/ (declaração das filas e conversor JSON)
+  api/             AuditEventController, DTOs, mappers, GlobalExceptionHandler,
+                   messaging/AuditMessageListener (consumidor da fila audit.events)
 ```
 
 - **Dono dos próprios dados:** banco `audit_db` num container Postgres próprio (`audit-postgres`, porta 5433), com usuário próprio — a aplicação principal nem tem credencial para entrar nele. O schema é da migration `V1` do serviço, cópia da `V8` do monolito.
-- **Contrato pela rede, não por código:** `GET /audit-events` e `POST /audit-events/permission-checks` (ver `docs/API.md`). O que os dois lados têm em comum — `Mapper`, `ErrorResponse`, as exceções base — foi **copiado**, não compartilhado por biblioteca (ADR-008).
-- **O que ficou de fora:** Spring Security (o serviço é chamado pela rede interna, não por clientes), Spring Modulith (é um módulo só), `AuditDemoRunner` e `AuditLogListener` — no serviço, o evento chega pelo `POST`, não por evento em memória.
+- **Contrato pela rede, não por código:** `GET /audit-events`, `POST /audit-events/permission-checks` e, desde a etapa 4, a mensagem da fila `audit.events` no RabbitMQ (ver `docs/API.md`). O que os dois lados têm em comum — `Mapper`, `ErrorResponse`, as exceções base — foi **copiado**, não compartilhado por biblioteca (ADR-008).
+- **O que ficou de fora:** Spring Security (o serviço é chamado pela rede interna, não por clientes), Spring Modulith (é um módulo só), `AuditDemoRunner` e `AuditLogListener` — no serviço, o evento chega pela fila ou pelo `POST`, não por evento em memória.
 
 **Extração concluída (30/09/2026).** A gravação e a consulta passam pelo serviço, e o monolito não guarda mais nada da trilha. Na gravação, o `AuditLogListener` do monolito traduz o `PermissionValidatedEvent` em `PermissionCheckEvent` e o entrega à porta `AuditTrail`, implementada por `AuditTrailClientAdapter` sobre o cliente OpenFeign `AuditClient` (`audit/infrastructure/client/`). O listener roda na thread da validação de permissão, então duas proteções impedem que a auditoria derrube a validação: timeout curto no cliente `audit-service` (1s para conectar, 2s para responder, no `application.yml`; o default do Feign é 60s) e um `try/catch` no listener. O adapter só traduz a `FeignException` para a `AuditTrailUnavailableException` da porta; quem decide que perder o evento é aceitável e quebrar a validação não é, é a camada `application`. Com o serviço fora do ar, a validação responde normalmente e o evento **se perde**, com um `WARN` no log — a limitação que a etapa 4 resolve trocando o Feign da gravação por uma fila no RabbitMQ. Na consulta, o `GET /audit-events` do monolito valida os filtros e o período (os `400` saem daqui, sem chamar a rede) e repassa ao serviço pela mesma porta `AuditTrail`, que devolve o modelo de leitura `AuditTrailEntry` — a resposta do serviço não traz dados para reconstruir um `PermissionCheckEvent`. Serviço fora do ar vira `503`: a `AuditTrailUnavailableException` estende a `ServiceUnavailableException` do `shared`, mapeada pelo `GlobalExceptionHandler` (o `shared` não pode importar do `audit`, que depende dele). A persistência local do módulo — entidades JPA, consultas do ADR-009, arquivo texto, `AuditDemoRunner` — foi apagada e a migration `V10` removeu a tabela `audit_events` do banco principal (ADR-010).
+
+**Gravação pela fila (03/10/2026, etapa 4, ADR-013).** A gravação deixou o Feign: o `AuditLogListener` agora entrega o evento à porta `AuditEventPublisher`, implementada por `RabbitAuditEventPublisher` (`audit/infrastructure/messaging/`), que publica a mensagem na fila `audit.events`. O `AuditMessageListener` do serviço consome e grava pelo mesmo `RegisterPermissionCheckUseCase` do `POST`. Com o serviço fora do ar, a mensagem **espera na fila** e é gravada quando ele volta: a perda do parágrafo acima deixou de existir. O listener passou a rodar em segundo plano (`@Async`), então a validação não espera nem o broker. A porta `AuditTrail` ficou só com a consulta, que continua por OpenFeign, porque quem consulta precisa da resposta na hora.
 
 **Direção futura: um serviço de auditoria genérico (registrada em 01/10/2026, fora do escopo atual).** A
 intenção do autor é tornar o `audit-service` um sistema de auditoria próprio e independente, em
@@ -41,10 +45,11 @@ redesenho, porque o modelo de hoje fala a língua deste produto:
 | Sem autenticação: só a rede interna chama | Chave de API por sistema cliente, com isolamento dos dados de cada cliente |
 | Filtro `onlyDenied` | Filtros por `source`, `type` e período, e filtro dentro do `payload` |
 
-Do lado do `permission-service`, a troca fica contida: o resto do módulo só conhece a porta
-`AuditTrail`, então mudam apenas o `AuditTrailClientAdapter` e os DTOs de `client/dto/`. **Proposta
-para a etapa 4:** desenhar a mensagem do RabbitMQ já nesse envelope genérico. O custo é o mesmo de um
-formato específico, e o formato fica pronto para a evolução.
+Do lado do `permission-service`, a troca fica contida: o resto do módulo só conhece as portas
+`AuditEventPublisher` e `AuditTrail`, então mudam apenas os adapters e os DTOs de `messaging/dto/` e
+`client/dto/`. **Feito na etapa 4:** a mensagem do RabbitMQ já usa o envelope genérico (`source`,
+`type`, `occurredAt`, `payload`, ADR-013). O custo foi o mesmo de um formato específico, e o formato
+fica pronto para a evolução.
 
 ---
 
@@ -114,9 +119,10 @@ permission ───────────────────────
 audit ───────────────────────────────────────────────────  ← implementado na disciplina de Spring Boot;
                                                             desde 30/09/2026, cliente do audit-service
   GET /audit-events → SearchAuditEventsUseCase (filtros type/projectId/onlyDenied/from/to),
-  repassado ao audit-service pela porta AuditTrail; serviço fora do ar → 503
-  AuditLogListener escuta PermissionValidatedEvent e registra a validação
-  no audit-service (porta AuditTrail → cliente OpenFeign AuditClient)
+  repassado ao audit-service pela porta AuditTrail (OpenFeign); serviço fora do ar → 503
+  AuditLogListener (@Async) escuta PermissionValidatedEvent e publica a validação
+  na fila audit.events do RabbitMQ (porta AuditEventPublisher), consumida pelo
+  audit-service — desde 03/10/2026 (ADR-013)
   sem banco próprio: a hierarquia AuditEvent completa, a tabela e o arquivo
   texto vivem no audit-service (ADR-010); aqui ficam só AuditEvent e
   PermissionCheckEvent, o evento que o listener monta e envia
@@ -879,6 +885,61 @@ SQL) estava espalhada em variáveis do `docker-compose.yml`, uma por serviço.
 
 ---
 
+## ADR-013: a gravação da auditoria vai pela fila; a consulta continua HTTP
+
+**Status:** aceito em 03/10/2026, na etapa 4 da disciplina de microsserviços. Implementa a Decisão 6 do
+plano da disciplina.
+
+**Contexto:** desde a etapa 2, a aplicação principal gravava cada validação no `audit-service` por
+OpenFeign, dentro da thread da validação. Com o serviço fora do ar, o evento se perdia, e com ele travado
+a validação esperava o timeout. A auditoria é efeito colateral: quem pediu a validação não precisa que
+ela já esteja gravada para receber a resposta.
+
+**Decisão:**
+
+- **Produtor na aplicação principal, direto no RabbitMQ.** O `AuditLogListener` entrega o evento à porta
+  `AuditEventPublisher`, e o `RabbitAuditEventPublisher` publica na fila `audit.events` pela exchange
+  padrão. Se o `audit-service` recebesse por HTTP e só depois enfileirasse, a aplicação principal
+  continuaria dependendo dele no ar.
+- **Consumidor no `audit-service`.** O `AuditMessageListener` grava pelo mesmo
+  `RegisterPermissionCheckUseCase` do `POST`. O `POST` continua existindo para uso direto.
+- **Envelope genérico:** `{source, type, occurredAt, payload}`. O consumidor lê o `type` antes de
+  converter o `payload`, o que prepara a direção futura de um serviço de auditoria genérico.
+- **O consumidor escolhe o tipo pelo parâmetro do método** (`setAlwaysConvertToInferredType`), e não
+  pelo cabeçalho `__TypeId__` do produtor. O nome da classe Java de um lado não existe do outro.
+- **Fila durável, declarada pelos dois lados com os mesmos argumentos.** O produtor também declara a
+  fila. Sem isso, uma mensagem publicada antes da primeira subida do `audit-service` iria para uma fila
+  que não existe, e o broker a descartaria.
+- **Fila de mensagens mortas `audit.events.dlq`.** O consumidor rejeita sem devolver à fila o que nunca
+  vai ser gravável: tipo desconhecido, payload inválido ou JSON quebrado. Uma falha de gravação, como o
+  banco fora, é tentada 3 vezes com intervalo crescente antes de ir para lá. Assim, nada trava a fila
+  num laço de reentrega, e nada some sem deixar rastro.
+- **O listener roda em segundo plano (`@Async`).** Com o broker parado, o nome `rabbitmq` deixa de
+  existir no DNS do Compose, e a resolução leva ~5s para falhar. O `connection-timeout` de 1s não
+  cobre essa etapa. Na thread da validação, isso custava 5,5s a cada requisição; em segundo plano, a
+  validação responde no tempo de sempre (~0,4s).
+- **A consulta continua OpenFeign.** Quem consulta a trilha precisa da resposta na hora, então REST é o
+  estilo certo para ela. É também o que mantém o cliente Feign das etapas 2 e 3 vivo na versão final
+  (Decisão 5 do plano).
+
+**Consequências:**
+
+- **Consumidor fora do ar:** a mensagem espera na fila e é gravada quando ele volta. Verificado: 3
+  validações com o `audit-service` parado ficaram na fila e foram gravadas na volta.
+- **Broker fora do ar:** a publicação falha, o evento se perde e fica um `WARN Audit event lost` no log,
+  mas a validação responde normalmente. Resolver isso pede uma *outbox* (gravar o evento no banco
+  principal na mesma transação e publicar depois), que fica como trabalho futuro.
+- **Ordem e duplicidade:** a entrega é *at-least-once*. Se o consumidor cair depois de gravar e antes
+  de confirmar, a mensagem volta e o evento é gravado duas vezes. Para uma trilha de auditoria isso é
+  tolerável; uma chave de idempotência no envelope resolveria.
+- **As tentativas também valem para o que nunca vai dar certo:** uma mensagem de tipo desconhecido
+  passa pelas 3 tentativas antes da fila de mensagens mortas. O custo é de poucos segundos por mensagem
+  inválida.
+- **A fila assíncrona perde a ordem garantida em relação à resposta:** logo depois do `200`, a trilha
+  pode ainda não mostrar o evento. A diferença é de milissegundos com o serviço no ar.
+
+---
+
 ## Segurança do Swagger UI
 
 `SecurityConfig` deixa todo o restante da API com `permitAll()` (autenticação real de cliente é trabalho futuro, ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`), mas `/swagger-ui/**` e `/v3/api-docs/**` exigem HTTP Basic com um usuário fixo em memória (`InMemoryUserDetailsManager`), configurado via `app.swagger.username` / `app.swagger.password` (env vars `SWAGGER_USERNAME` / `SWAGGER_PASSWORD`; default `admin` / `admin123` só no profile `dev`, obrigatórias no `prod` — ADR-011). `/actuator/**` continua liberado.
@@ -998,14 +1059,18 @@ permission-service/src/main/java/com/saas/permissions/
 └── audit/                 # implementado na disciplina de Spring Boot; desde 30/09/2026 é
     │                      # cliente do audit-service, sem banco próprio (ADR-010)
     ├── domain/            # AuditEvent.java (abstrata) e PermissionCheckEvent.java (o evento
-    │                      # enviado), AuditTrail.java (porta de gravação e consulta no
-    │                      # audit-service), AuditTrailEntry.java (modelo de leitura)
-    │   └── exception/     # InvalidAuditPeriodException.java, AuditTrailUnavailableException.java
-    ├── application/       # AuditLogListener.java (Observer), SearchAuditEventsUseCase.java
+    │                      # enviado), AuditEventPublisher.java (porta de gravação, pela fila),
+    │                      # AuditTrail.java (porta de consulta no audit-service),
+    │                      # AuditTrailEntry.java (modelo de leitura)
+    │   └── exception/     # InvalidAuditPeriodException.java, AuditTrailUnavailableException.java,
+    │                      # AuditEventNotPublishedException.java
+    ├── application/       # AuditLogListener.java (Observer, @Async), SearchAuditEventsUseCase.java
     │   └── query/         # SearchAuditEventsQuery.java
     ├── infrastructure/
-    │   └── client/        # AuditClient.java (@FeignClient), AuditTrailClientAdapter.java
-    │       └── dto/       # RegisterPermissionCheckRequest.java, AuditEventResponse.java (contrato)
+    │   ├── messaging/     # RabbitAuditEventPublisher.java, AuditMessagingConfig.java (fila e conversor)
+    │   │   └── dto/       # AuditMessage.java (envelope), PermissionCheckPayload.java (contrato)
+    │   └── client/        # AuditClient.java (@FeignClient, só a consulta), AuditTrailClientAdapter.java
+    │       └── dto/       # AuditEventResponse.java (contrato)
     └── api/               # AuditEventController.java
         ├── dto/           # SearchAuditEventsRequest.java, AuditEventResponse.java
         └── mapper/        # SearchAuditEventsMapper.java, AuditEventResponseMapper.java
