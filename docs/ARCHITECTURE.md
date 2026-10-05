@@ -102,8 +102,10 @@ project ────────────────────────
     │   é o que define quais rotas cada cargo pode acessar
     ├── persistência JPA: Project @OneToMany Role/Route,
     │   Role @OneToMany RoleRoute @ManyToOne Route
-    └── CheckRouteAccessUseCase responde se um cargo alcança uma rota —
-        é o que o permission consulta pelo RouteAccessChecker
+    ├── CheckRouteAccessUseCase responde se um cargo alcança uma rota —
+    │   é o que o permission consulta pelo RouteAccessChecker
+    └── POST /projects/{id}/routes/import importa rotas de um CSV com
+        Spring Batch, em lotes de 10 (ADR-014, desde 04/10/2026)
   Define o que pode ser acessado e por quem (Roles/Routes)
 
 permission ──────────────────────────────────────────────  ← núcleo, implementado
@@ -940,6 +942,59 @@ ela já esteja gravada para receber a resposta.
 
 ---
 
+## ADR-014: importação de rotas em lote com Spring Batch, dentro do módulo `project`
+
+**Status:** aceito em 04/10/2026, na etapa 4 da disciplina de microsserviços. Implementa a Decisão 7 do
+plano da disciplina.
+
+**Contexto:** um cliente que migra a API para o SaaS precisa cadastrar dezenas de rotas de uma vez.
+Uma requisição por rota é lenta para ele e frágil: se parar no meio, não há registro do que entrou.
+É o caso típico de processamento em lote, e não de REST nem de mensageria: um conjunto de dados
+conhecido de antemão, processado do começo ao fim, com um resumo no final.
+
+**Decisão:**
+
+- **Endpoint `POST /projects/{projectId}/routes/import`**, que recebe o CSV e dispara o job
+  `importRoutesJob` pelo `JobOperator`. O controller só repassa: valida a presença do arquivo pelo
+  `RouteImportRequest` e chama o `ImportRoutesUseCase`, que confere o projeto e chama a porta
+  `RouteImporter`. O `BatchRouteImporter` (adapter da porta) copia o conteúdo para um arquivo
+  temporário, porque o reader do Batch lê do disco.
+- **Um step com chunk de 10:** `FlatFileItemReader` (uma linha por vez, sem carregar o arquivo na
+  memória) → `RouteImportProcessor` (normaliza a linha e descarta o que não serve, devolvendo `null`) →
+  `RouteImportWriter`. Cada chunk é uma transação.
+- **O writer grava pelo `AddRouteToProjectUseCase`.** A rota importada passa pelo mesmo
+  `Project.addRoute` de uma rota criada pela API, e a regra de criação continua num lugar só.
+- **O processor descarta antes o que o agregado recusaria.** A rota repetida no arquivo ou já existente
+  no projeto viraria `RouteAlreadyExistsException` no writer e desfaria o chunk inteiro. O processor
+  carrega as rotas do projeto uma vez por execução (`@StepScope`) e vai acrescentando as que aceita.
+- **Linha com o número errado de colunas é pulada** (`faultTolerant().skip(FlatFileParseException)`), até
+  10 por execução.
+- **Histórico das execuções no banco** (`spring-boot-starter-batch-jdbc`): as tabelas `BATCH_*` vêm da
+  migration `V11`, cópia do `schema-postgresql.sql` do Spring Batch 6.0.4, porque o schema é do Flyway
+  (`spring.batch.jdbc.initialize-schema: never`). Os jobs não rodam na subida (`spring.batch.job.enabled:
+  false`).
+- **Execução síncrona:** o job roda na thread da requisição, e a resposta traz os contadores. O arquivo
+  é pequeno e quem importa quer o resumo na hora.
+- **No `permission-service`, e não num serviço novo:** a importação grava no agregado `Project`, que é
+  da aplicação principal. Um serviço de importação separado teria que gravar por HTTP ou pela fila,
+  regra por regra, e não ganharia nada com isso.
+
+**Consequências:**
+
+- Importar o mesmo arquivo de novo não duplica nada: todas as linhas são descartadas e a resposta vem
+  com `imported: 0`. Verificado em 04/10: 16 lidas, 12 importadas e 4 descartadas na primeira vez; 16
+  descartadas na segunda.
+- Um arquivo muito grande prenderia a requisição. O próximo passo seria disparar o job em segundo plano
+  (`TaskExecutorJobOperator`), devolver `202` com o `executionId` e consultar o andamento depois.
+- O job não é reiniciável de onde parou: cada upload gera um arquivo temporário novo, apagado no fim, e
+  um parâmetro `requestedAt` único. Reiniciar exigiria guardar o arquivo enquanto a execução não
+  terminasse.
+- Sem teste automatizado próprio. O teste de contexto (`PermissionSaasApplicationTests`) garante que o
+  job monta, com as tabelas do Batch criadas no H2. O comportamento foi verificado pela pasta
+  `Importacao de rotas (Spring Batch)` do Postman.
+
+---
+
 ## Segurança do Swagger UI
 
 `SecurityConfig` deixa todo o restante da API com `permitAll()` (autenticação real de cliente é trabalho futuro, ver `docs/clean_code_e_padroes_de_projeto/PLAN.md`), mas `/swagger-ui/**` e `/v3/api-docs/**` exigem HTTP Basic com um usuário fixo em memória (`InMemoryUserDetailsManager`), configurado via `app.swagger.username` / `app.swagger.password` (env vars `SWAGGER_USERNAME` / `SWAGGER_PASSWORD`; default `admin` / `admin123` só no profile `dev`, obrigatórias no `prod` — ADR-011). `/actuator/**` continua liberado.
@@ -1003,7 +1058,8 @@ permission-service/src/main/java/com/saas/permissions/
 │   │   │   └── exception/ # ProjectNotFoundException, PlanLimitExceededException,
 │   │   │                  # InvalidProjectDataException, ProjectAlready{Active,Inactive,Deleted}Exception
 │   │   ├── role/          # Role.java + exception/RoleAlreadyExistsException, RoleNotFoundException
-│   │   ├── route/         # Route.java + exception/RouteAlreadyExistsException, RouteNotFoundException
+│   │   ├── route/         # Route.java, RouteImporter (porta da importação em lote),
+│   │   │                  # RouteImportResult + exception/RouteAlreadyExistsException, RouteNotFoundException
 │   │   └── roleroute/     # RoleRoute.java (entidade associativa com histórico)
 │   │       └── exception/ # RouteAccessAlreadyGranted/AlreadyRevoked/NotFoundException
 │   ├── application/
@@ -1014,7 +1070,7 @@ permission-service/src/main/java/com/saas/permissions/
 │   │   │   └── query/     # SearchProjectsQuery
 │   │   ├── role/          # AddRoleToProjectUseCase
 │   │   │   └── command/   # AddRoleToProjectCommand
-│   │   ├── route/         # AddRouteToProjectUseCase, FindProjectRoutesUseCase
+│   │   ├── route/         # AddRouteToProjectUseCase, FindProjectRoutesUseCase, ImportRoutesUseCase
 │   │   │   └── command/   # AddRouteToProjectCommand
 │   │   └── roleroute/     # GrantRouteToRoleUseCase, RevokeRouteFromRoleUseCase,
 │   │                      # FindRolePermissionsUseCase
@@ -1023,7 +1079,9 @@ permission-service/src/main/java/com/saas/permissions/
 │   │   │                  # JpaProjectRepository, ProjectRepositoryAdapter, ProjectDemoRunner
 │   │   ├── role/          # RoleJpaEntity (@ManyToOne project, @OneToMany permissions), RoleJpaMapper
 │   │   ├── route/         # RouteJpaEntity (@ManyToOne project, @OneToMany permissions inverso),
-│   │   │                  # RouteJpaMapper
+│   │   │   │              # RouteJpaMapper
+│   │   │   └── batch/     # job de importação (ADR-014): ImportRoutesJobConfig (reader, step, job),
+│   │   │                  # RouteCsvLine, RouteImportProcessor, RouteImportWriter, BatchRouteImporter
 │   │   └── roleroute/     # RoleRouteJpaEntity (@ManyToOne role + @ManyToOne route), RoleRouteJpaMapper
 │   └── api/
 │       ├── project/       # ProjectController.java
@@ -1034,8 +1092,8 @@ permission-service/src/main/java/com/saas/permissions/
 │       │   ├── dto/       # AddRoleRequest, RoleResponse
 │       │   └── mapper/    # AddRoleToProjectMapper, RoleResponseMapper
 │       ├── route/         # RouteController.java
-│       │   ├── dto/       # AddRouteRequest, RouteResponse
-│       │   └── mapper/    # AddRouteToProjectMapper, RouteResponseMapper
+│       │   ├── dto/       # AddRouteRequest, RouteImportRequest, RouteResponse, RouteImportResponse
+│       │   └── mapper/    # AddRouteToProjectMapper, RouteResponseMapper, RouteImportResponseMapper
 │       └── roleroute/     # RoleRouteController.java
 │           ├── dto/       # RolePermissionResponse
 │           └── mapper/    # RolePermissionResponseMapper

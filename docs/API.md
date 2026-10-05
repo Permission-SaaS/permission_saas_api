@@ -466,6 +466,42 @@ Lista as rotas do projeto, ordenadas por `path`.
 curl "http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000/routes?httpMethod=GET"
 ```
 
+### `POST /projects/{projectId}/routes/import`
+
+Importa rotas em lote a partir de um CSV, com Spring Batch (ADR-014 em `docs/ARCHITECTURE.md`). O job lê o arquivo em lotes (*chunks*) de 10 linhas, normaliza cada linha, descarta a que não serve e grava as demais pelo mesmo caso de uso do `POST /projects/{projectId}/routes`. Cada lote é uma transação.
+
+**Request:** `multipart/form-data`, com o arquivo no campo `file` (`RouteImportRequest`). O CSV tem cabeçalho e as colunas `name,httpMethod,path,description`. Exemplo em `docs/postman/rotas-exemplo.csv`:
+
+```csv
+name,httpMethod,path,description
+Listar pedidos,GET,/orders,Lista os pedidos do cliente
+Criar pedido,post,/orders,Cria um pedido
+Detalhar pedido,GET,orders/{id},Detalhe de um pedido
+```
+
+**Tratamento de cada linha** (`RouteImportProcessor`):
+
+- espaços nas pontas são removidos, o método vai para maiúsculas, o `path` ganha a `/` inicial se faltar e perde a `/` final;
+- a linha é **descartada** se o `name` ou o `path` estiverem vazios, se o método não for `GET`, `POST`, `PUT`, `PATCH` ou `DELETE`, ou se a rota (método + `path`) já existir no projeto ou já tiver aparecido antes no arquivo;
+- uma linha com o número errado de colunas é **pulada**, até 10 por importação; acima disso, a importação falha.
+
+**Response** `200 OK` — `RouteImportResponse`. `discarded` soma as linhas descartadas e as puladas:
+
+```json
+{ "executionId": 1, "status": "COMPLETED", "read": 16, "imported": 12, "discarded": 4 }
+```
+
+Importar o mesmo arquivo de novo não duplica nada: todas as rotas já existem, e a resposta vem com `imported: 0`. Um arquivo vazio também não é erro: a resposta vem com `read: 0`.
+
+**Erros:** `400` sem o campo `file`; `404` se o projeto não existir ou estiver excluído.
+
+```bash
+curl -F "file=@docs/postman/rotas-exemplo.csv" \
+  http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000/routes/import
+```
+
+Cada execução fica registrada nas tabelas do Spring Batch (`batch_job_execution`, `batch_step_execution`), com status e contadores. No Postman: pasta `Importacao de rotas (Spring Batch)`.
+
 ---
 
 ### `POST /projects/{projectId}/roles/{roleId}/routes/{routeId}`

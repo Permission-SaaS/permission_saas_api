@@ -178,6 +178,8 @@ Rota protegida de um projeto.
 | `isActive` | boolean | — |
 | `createdAt`, `updatedAt` | timestamp | — |
 
+**Importação em lote** (`POST /projects/{projectId}/routes/import`, desde a disciplina de microsserviços). Uma rota vinda do CSV passa pelas mesmas regras de uma rota criada pela API, porque é gravada pelo mesmo `AddRouteToProjectUseCase` e pelo mesmo `Project.addRoute`. Antes disso, a importação normaliza a linha (método em maiúsculas, `path` com `/` inicial e sem `/` final) e descarta a rota que o agregado recusaria, como duplicada: a mesma rota (método + `path`, sem diferenciar maiúsculas) já existente no projeto, ou repetida no próprio arquivo. Assim uma linha repetida não derruba o lote inteiro.
+
 ---
 
 ### RoleRoute
