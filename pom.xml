@@ -120,6 +120,12 @@
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
 
+        <!-- Processamento em lote (Spring Batch, historico das execucoes no banco) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-batch-jdbc</artifactId>
+        </dependency>
+
         <!-- Persistência -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

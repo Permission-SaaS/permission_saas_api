@@ -13,6 +13,10 @@ spring:
     database-platform: org.hibernate.dialect.H2Dialect
   flyway:
     enabled: false
+  # Sem Flyway nos testes, o Batch cria as próprias tabelas no H2.
+  batch:
+    jdbc:
+      initialize-schema: embedded
 
 app:
   swagger:

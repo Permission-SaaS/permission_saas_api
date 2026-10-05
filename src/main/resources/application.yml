@@ -33,6 +33,14 @@ spring:
             connect-timeout: 1000
             read-timeout: 2000
 
+  # Os jobs do Spring Batch só rodam quando disparados pela API, nunca na subida. As
+  # tabelas de controle são criadas pelo Flyway (V11), não pelo Batch.
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: never
+
   # A publicação da auditoria roda na thread da validação de permissão: com o broker
   # fora do ar, desiste em 1s em vez de prender a validação.
   rabbitmq:
