@@ -327,10 +327,10 @@ Desde 30/09/2026 a trilha mora no `audit-service` (ADR-010), então a mudança a
    mais um índice (`user_id`, `occurred_at DESC`), que é como a consulta de investigação vai filtrar.
 2. **`audit-service`:** `PermissionCheckEvent.userId`, `describe()` passando a citá-lo,
    `PermissionCheckEventJpaEntity`, o `AuditEventRepositoryAdapter` nos dois sentidos e o
-   `RegisterPermissionCheckRequest` do `POST`.
+   `RegisterPermissionCheckRequest` do `POST` e o `PermissionCheckPayload` da mensagem da fila.
 3. **`permission-service`:** `ValidatePermissionRequest` → `PermissionCheckRequest` →
-   `PermissionValidatedEvent` → `AuditLogListener` → `PermissionCheckEvent` → DTO de contrato do
-   cliente Feign. É o mesmo caminho que `projectId` e `httpMethod` percorreram na etapa 4, e serve de
+   `PermissionValidatedEvent` → `AuditLogListener` → `PermissionCheckEvent` → `PermissionCheckPayload`
+   da mensagem (`RabbitAuditEventPublisher`). É o mesmo caminho que `projectId` e `httpMethod` percorreram na etapa 4, e serve de
    roteiro.
 4. **Os dois:** `GET /audit-events?userId=` — filtro `(:userId IS NULL OR event.userId = :userId)` a
    mais nas consultas JPQL do serviço, e o parâmetro repassado pelo `AuditClient` e pela porta
