@@ -295,6 +295,20 @@ Formato de resposta único: `shared/api/dto/ErrorResponse` (`status`, `error`, `
 
 ---
 
+## Princípios SOLID
+
+Onde cada princípio aparece no código:
+
+| Princípio | Onde |
+|---|---|
+| **SRP** — uma razão para mudar | Cada `UseCase` é uma classe com um único método público (`execute`) e um único caso de uso. Os 25 use cases seguem a regra. |
+| **OCP** — aberto para extensão, fechado para modificação | Um novo handler de validação estende `PermissionValidationHandler` e entra na cadeia sem mudar os existentes; um novo gateway de pagamento implementa `PaymentGateway` sem tocar no `SubscribeToPlanUseCase`. |
+| **LSP** — subtipos substituíveis | Os handlers da Chain of Responsibility são intercambiáveis pelo contrato do handler abstrato, e os listeners de evento, pelo contrato do evento que consomem. |
+| **ISP** — interfaces enxutas | `PaymentGateway` expõe só `process()`; `Mapper<I, O>` expõe só `map()`. |
+| **DIP** — depender de abstrações | Os use cases dependem das portas em `domain` (repositórios, `PaymentGateway`, `ApiKeyValidator`, `RouteAccessChecker`, `AuditEventPublisher`, `AuditTrail`), nunca de JPA, HTTP ou de outro módulo. Foi o que permitiu trocar os adapters em `Map` das etapas 1-3 da disciplina de Spring Boot pelos adapters JPA da etapa 4 sem mexer nas camadas de cima (ADR-005). |
+
+---
+
 ## Segurança do Swagger UI
 
 `SecurityConfig` deixa todo o restante da API com `permitAll()` (autenticação real de cliente é trabalho futuro, ver o [`PLAN.md` da disciplina de Clean Code](https://github.com/Permission-SaaS/permission_saas/blob/main/docs/clean_code_e_padroes_de_projeto/PLAN.md)), mas `/swagger-ui/**` e `/v3/api-docs/**` exigem HTTP Basic com um usuário fixo em memória (`InMemoryUserDetailsManager`), configurado via `app.swagger.username` / `app.swagger.password` (env vars `SWAGGER_USERNAME` / `SWAGGER_PASSWORD`; default `admin` / `admin123` só no profile `dev`, obrigatórias no `prod` — ADR-011). `/actuator/**` continua liberado.
