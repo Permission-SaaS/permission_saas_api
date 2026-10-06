@@ -45,3 +45,8 @@ Os testes rodam no profile `test`, com H2 em memória: não precisam de banco ne
 - [`docs/API.md`](docs/API.md): cada endpoint, com exemplo de `curl`
 - [`docs/PATTERNS.md`](docs/PATTERNS.md): os padrões de projeto aplicados
 - [`docs/TEST-ARCHITECTURE.md`](docs/TEST-ARCHITECTURE.md): camadas e convenções de teste
+
+## Licença
+
+Todos os direitos reservados a Jairo Williams Guedes Lopes Neto. O código é público só para consulta
+e avaliação; ver [`LICENSE`](LICENSE).
