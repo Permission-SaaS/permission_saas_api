@@ -1,8 +1,8 @@
 # API — Permission SaaS
 
-Cada endpoint implementado: método, path, request/response e um exemplo de `curl`. As seções por módulo descrevem a aplicação principal (`permission-service`, porta 8080); o serviço extraído tem sua própria seção no fim, [`audit-service`](#audit-service--serviço-independente-porta-8081), seguida do [`config-server`](#config-server--configuração-centralizada-porta-8888).
+Cada endpoint implementado do `permission-service` (porta 8080): método, path, request/response e um exemplo de `curl`. Os endpoints do `audit-service` e o contrato da fila `audit.events` estão na [documentação dele](https://github.com/Permission-SaaS/permission_saas_audit/blob/main/docs/API.md); o endpoint do Config Server, no [README do `permission_saas_config`](https://github.com/Permission-SaaS/permission_saas_config#readme).
 
-Uma coleção Postman com todos os endpoints, encadeados por variáveis (`clientId` → `planId` → `apiKey` → `projectId`) e com asserções de status, está versionada em `docs/postman/permission-saas.postman_collection.json`. Para rodar a coleção inteira sem abrir o Postman:
+Uma coleção Postman com todos os endpoints, encadeados por variáveis (`clientId` → `planId` → `apiKey` → `projectId`) e com asserções de status, está versionada no [repositório guarda-chuva](https://github.com/Permission-SaaS/permission_saas), em `docs/postman/permission-saas.postman_collection.json`. Para rodar a coleção inteira sem abrir o Postman, a partir da raiz do guarda-chuva:
 
 ```bash
 npx newman run docs/postman/permission-saas.postman_collection.json
@@ -468,9 +468,9 @@ curl "http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000/routes
 
 ### `POST /projects/{projectId}/routes/import`
 
-Importa rotas em lote a partir de um CSV, com Spring Batch (ADR-014 em `docs/ARCHITECTURE.md`). O job lê o arquivo em lotes (*chunks*) de 10 linhas, normaliza cada linha, descarta a que não serve e grava as demais pelo mesmo caso de uso do `POST /projects/{projectId}/routes`. Cada lote é uma transação.
+Importa rotas em lote a partir de um CSV, com Spring Batch (ADR-014, no [log de ADRs](https://github.com/Permission-SaaS/permission_saas/blob/main/docs/ARCHITECTURE.md)). O job lê o arquivo em lotes (*chunks*) de 10 linhas, normaliza cada linha, descarta a que não serve e grava as demais pelo mesmo caso de uso do `POST /projects/{projectId}/routes`. Cada lote é uma transação.
 
-**Request:** `multipart/form-data`, com o arquivo no campo `file` (`RouteImportRequest`). O CSV tem cabeçalho e as colunas `name,httpMethod,path,description`. Exemplo em `docs/postman/rotas-exemplo.csv`:
+**Request:** `multipart/form-data`, com o arquivo no campo `file` (`RouteImportRequest`). O CSV tem cabeçalho e as colunas `name,httpMethod,path,description`. Exemplo em `docs/postman/rotas-exemplo.csv`, no repositório guarda-chuva:
 
 ```csv
 name,httpMethod,path,description
@@ -496,6 +496,7 @@ Importar o mesmo arquivo de novo não duplica nada: todas as rotas já existem, 
 **Erros:** `400` sem o campo `file`; `404` se o projeto não existir ou estiver excluído.
 
 ```bash
+# da raiz do guarda-chuva
 curl -F "file=@docs/postman/rotas-exemplo.csv" \
   http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000/routes/import
 ```
@@ -573,11 +574,11 @@ curl "http://localhost:8080/projects/$PROJ/roles/$ROLE/routes?includeRevoked=tru
 
 ### `GET /audit-events`
 
-Lista a trilha de auditoria, do evento mais recente para o mais antigo. **Desde 30/09/2026 é um repasse:** a aplicação principal valida os filtros e repassa a consulta ao [`GET /audit-events` do `audit-service`](#get-audit-events-1) pelo cliente OpenFeign `AuditClient`. Os eventos chegam lá pelo Observer `AuditLogListener`, que reage ao `PermissionValidatedEvent` publicado a cada `POST /validate-permission` e publica cada validação na [fila `audit.events`](#mensageria--fila-auditevents-rabbitmq), consumida pelo serviço — ver `docs/PATTERNS.md`.
+Lista a trilha de auditoria, do evento mais recente para o mais antigo. **Desde 30/09/2026 é um repasse:** a aplicação principal valida os filtros e repassa a consulta ao [`GET /audit-events` do `audit-service`](https://github.com/Permission-SaaS/permission_saas_audit/blob/main/docs/API.md#get-audit-events) pelo cliente OpenFeign `AuditClient`. Os eventos chegam lá pelo Observer `AuditLogListener`, que reage ao `PermissionValidatedEvent` publicado a cada `POST /validate-permission` e publica cada validação na [fila `audit.events`](https://github.com/Permission-SaaS/permission_saas_audit/blob/main/docs/API.md#mensageria--fila-auditevents-rabbitmq), consumida pelo serviço — ver `docs/PATTERNS.md`.
 
 **Query params** (todos opcionais, `SearchAuditEventsRequest`): `type` (`PERMISSION_CHECK` ou `PROJECT_LIFECYCLE`, sem diferenciar maiúsculas), `projectId` (UUID), `onlyDenied` (`true` devolve só as validações negadas), `from` e `to` (ISO-8601 com fuso, ex.: `2026-09-01T00:00:00Z`; os dois limites entram no resultado). Um limite sozinho vale como "a partir de" ou "até". `onlyDenied=true` com `type=PROJECT_LIFECYCLE` devolve lista vazia — evento de ciclo de vida nunca é negado.
 
-Os filtros são aplicados pelo `audit-service`, no banco dele, por consulta JPQL (ver `docs/ARCHITECTURE.md` → ADR-009). `from` e `to` seguem para o serviço convertidos para UTC (`Instant`), então um fuso positivo enviado aqui não chega lá como `+` na URL.
+Os filtros são aplicados pelo `audit-service`, no banco dele, por consulta JPQL (ADR-009, no [log de ADRs](https://github.com/Permission-SaaS/permission_saas/blob/main/docs/ARCHITECTURE.md)). `from` e `to` seguem para o serviço convertidos para UTC (`Instant`), então um fuso positivo enviado aqui não chega lá como `+` na URL.
 
 **Response** `200 OK` — array de `AuditEventResponse`:
 ```json
@@ -611,151 +612,3 @@ curl "http://localhost:8080/audit-events?onlyDenied=true&from=2026-09-01T00:00:0
 ```
 
 > Use `Z` ou um fuso negativo (`-03:00`) na URL. Um `+` sem codificação (`%2B`) chega ao servidor como espaço e a data não é reconhecida.
-
----
-
-## `audit-service` — serviço independente (porta 8081)
-
-A trilha de auditoria extraída como aplicação Spring Boot própria, com banco próprio (`audit_db`, porta 5433). A aplicação principal chama o `GET` via OpenFeign a cada consulta ao `GET /audit-events` dela. A gravação chega pela [fila `audit.events`](#mensageria--fila-auditevents-rabbitmq) desde 03/10/2026; até então era o `POST`, que continua disponível para uso direto. Os dois podem ser exercitados direto, pelo Postman (pasta `audit-service (8081)`) ou pelo Swagger UI em `http://localhost:8081/swagger-ui/index.html`.
-
-Erros seguem o mesmo [formato padrão](#formato-padrão-de-erro) da aplicação principal. O serviço não tem autenticação: é chamado pela rede interna dos serviços, não por clientes.
-
-### `GET /audit-events`
-
-Mesmo contrato do [`GET /audit-events`](#get-audit-events) da aplicação principal — filtros `type`, `projectId`, `onlyDenied`, `from` e `to`, resposta `AuditEventResponse[]` do mais recente para o mais antigo e os mesmos `400`. As consultas JPQL são as do ADR-009, copiadas para o serviço.
-
-```bash
-curl "http://localhost:8081/audit-events?onlyDenied=true&from=2026-09-01T00:00:00Z"
-```
-
-### `POST /audit-events/permission-checks`
-
-Registra uma validação de permissão na trilha. O caminho é específico do tipo de evento porque o corpo só serve para validações de permissão; `GET /audit-events` continua listando todos os tipos juntos.
-
-**Request** (`RegisterPermissionCheckRequest`):
-```json
-{
-  "projectId": "11111111-1111-1111-1111-111111111111",
-  "occurredAt": "2026-09-28T20:00:00Z",
-  "routePath": "/produtos",
-  "httpMethod": "GET",
-  "roleName": "ADMIN",
-  "granted": false,
-  "reason": "invalid or inactive api key",
-  "durationMs": 3.5
-}
-```
-
-| Campo | Regra |
-|---|---|
-| `projectId` | obrigatório, UUID |
-| `occurredAt` | obrigatório, ISO-8601 com fuso. **Sem** `@PastOrPresent`: a data é gerada por outro serviço, com outro relógio, e uma diferença de milissegundos entre eles recusaria eventos legítimos |
-| `routePath` | obrigatório, começa com `/`, até 255 caracteres |
-| `httpMethod` | obrigatório, `GET`/`POST`/`PUT`/`PATCH`/`DELETE` sem diferenciar maiúsculas; gravado em maiúsculas |
-| `roleName` | obrigatório, até 80 caracteres |
-| `granted` | obrigatório. É `Boolean`, não `boolean`: um campo ausente vira `400`, e não "negado" em silêncio |
-| `reason` | opcional (só as negadas têm motivo), até 255 caracteres |
-| `durationMs` | obrigatório, `>= 0` |
-
-Os limites de tamanho seguem as colunas da migration `V1`, para que um valor grande demais responda `400` em vez de estourar no banco.
-
-**Response** `201 Created` — o `AuditEventResponse` gravado:
-```json
-{
-  "id": "3848fce2-7590-4fbc-b802-ff41b7085232",
-  "type": "PERMISSION_CHECK",
-  "projectId": "11111111-1111-1111-1111-111111111111",
-  "occurredAt": "2026-09-28T20:00Z",
-  "description": "NEGADO GET /produtos para o cargo 'ADMIN' — invalid or inactive api key (3.5 ms)"
-}
-```
-
-Cada evento gravado também é acrescentado como uma linha em `logs/audit-events.txt`, relativo à pasta de onde o serviço sobe.
-
-**Erros:** `400 Bad Request` com os campos inválidos na mensagem (ex.: `"routePath: must start with /; granted: must not be null"`), ou `"Malformed request body"` para JSON quebrado ou UUID/data em formato inválido.
-
-```bash
-curl -X POST http://localhost:8081/audit-events/permission-checks \
-  -H "Content-Type: application/json" \
-  -d '{"projectId":"11111111-1111-1111-1111-111111111111","occurredAt":"2026-09-28T20:00:00Z","routePath":"/produtos","httpMethod":"GET","roleName":"ADMIN","granted":false,"reason":"invalid or inactive api key","durationMs":3.5}'
-```
-
----
-
-## Mensageria — fila `audit.events` (RabbitMQ)
-
-Não é endpoint HTTP: é o contrato da mensagem que a aplicação principal publica a cada `POST /validate-permission` e que o `audit-service` consome para gravar a trilha (ADR-013 em `docs/ARCHITECTURE.md`). A publicação usa a exchange padrão, com a fila `audit.events` como *routing key*.
-
-**Mensagem** (`AuditMessage`, JSON): um envelope genérico, com os dados próprios do tipo de evento em `payload`.
-
-```json
-{
-  "source": "permission-service",
-  "type": "PERMISSION_CHECK",
-  "occurredAt": "2026-10-03T03:27:58.123Z",
-  "payload": {
-    "projectId": "11111111-1111-1111-1111-111111111111",
-    "routePath": "/users",
-    "httpMethod": "GET",
-    "roleName": "ADMIN",
-    "granted": false,
-    "reason": "invalid or inactive api key",
-    "durationMs": 3.5
-  }
-}
-```
-
-| Campo | Regra |
-|---|---|
-| `source`, `type` | obrigatórios. Hoje só `type: PERMISSION_CHECK` é aceito |
-| `occurredAt` | obrigatório, ISO-8601 em UTC |
-| `payload` | obrigatório. Para `PERMISSION_CHECK`, as mesmas regras do corpo do [`POST /audit-events/permission-checks`](#post-audit-eventspermission-checks), sem o `occurredAt`, que vem do envelope |
-
-**O que acontece com cada mensagem:**
-
-- **Válida:** gravada pelo mesmo caso de uso do `POST` e confirmada (*ack*); sai da fila.
-- **Com o `audit-service` fora do ar:** espera na fila, que é durável, até ele voltar.
-- **Inválida** (tipo desconhecido, payload fora das regras, JSON quebrado), **ou que falhou ao gravar 3 vezes seguidas:** vai para a fila `audit.events.dlq`, onde fica para conferência.
-
-**Como ver:** painel do RabbitMQ em `http://localhost:15672` (usuário `saas`, senha `saas123`), aba *Queues*. Pela API do painel, sem tirar as mensagens da fila:
-
-```bash
-curl -u saas:saas123 -H "Content-Type: application/json" \
-  -X POST http://localhost:15672/api/queues/%2F/audit.events/get \
-  -d '{"count":10,"ackmode":"ack_requeue_true","encoding":"auto"}'
-```
-
-No Postman, a pasta `audit-service fora do ar` faz isso com o consumidor parado e depois de religá-lo.
-
----
-
-## `config-server` — configuração centralizada (porta 8888)
-
-Não é API de negócio: é o endpoint padrão do Spring Cloud Config, que os dois serviços chamam na subida quando rodam no profile `prod` (ADR-012 em `docs/ARCHITECTURE.md`). Serve os arquivos de `config-repo/`.
-
-### `GET /{aplicação}/{profile}`
-
-Devolve a configuração de uma aplicação num profile. A resposta lista as fontes (`propertySources`) que se aplicam, da mais específica para a mais geral; quando duas definem a mesma propriedade, vale a primeira.
-
-**Response** `200 OK` (resumida):
-
-```json
-{
-  "name": "permission-service",
-  "profiles": ["prod"],
-  "propertySources": [
-    { "name": "file:/config-repo/permission-service-prod.yml",
-      "source": { "spring.datasource.url": "jdbc:postgresql://postgres:5432/permissions_saas",
-                  "audit.service.url": "http://audit-service:8081" } },
-    { "name": "file:/config-repo/application-prod.yml",
-      "source": { "spring.jpa.show-sql": false } }
-  ]
-}
-```
-
-Um nome de aplicação sem arquivo próprio não dá erro: devolve só as fontes gerais (`application-<profile>.yml`). Pelo Postman: pasta `config-server (8888)`.
-
-```bash
-curl http://localhost:8888/permission-service/prod
-curl http://localhost:8888/audit-service/prod
-```

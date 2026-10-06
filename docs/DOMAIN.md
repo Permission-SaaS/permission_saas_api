@@ -1,6 +1,6 @@
 # Domínio — Permission SaaS
 
-Glossário das entidades, value objects e invariantes de negócio. Fonte de referência: `docs/DER.pdf`.
+Glossário das entidades, value objects e invariantes de negócio. Fonte de referência: o `docs/DER.pdf` do [repositório guarda-chuva](https://github.com/Permission-SaaS/permission_saas). Os números de ADR citados apontam para o [log de ADRs](https://github.com/Permission-SaaS/permission_saas/blob/main/docs/ARCHITECTURE.md).
 
 ---
 
@@ -208,7 +208,7 @@ Entidade associativa entre `Role` e `Route` (`project/domain/roleroute`). É ela
 
 ## `audit`
 
-Desde 30/09/2026 a trilha mora no `audit-service`, com banco próprio (`audit_db`), e o modelo completo abaixo está lá. No `permission-service` ficam só `AuditEvent` e `PermissionCheckEvent`, o evento que o `AuditLogListener` monta e envia, e o modelo de leitura `AuditTrailEntry`. `ProjectLifecycleEvent` existe só no serviço. Ver `docs/ARCHITECTURE.md` → ADR-010.
+Desde 30/09/2026 a trilha mora no `audit-service`, com banco próprio (`audit_db`); o modelo completo, com `ProjectLifecycleEvent` e o mapeamento `SINGLE_TABLE`, está na [documentação dele](https://github.com/Permission-SaaS/permission_saas_audit/blob/main/docs/DOMAIN.md). Aqui ficam só `AuditEvent` e `PermissionCheckEvent`, o evento que o `AuditLogListener` monta e envia, e o modelo de leitura `AuditTrailEntry` (ADR-010).
 
 ### AuditEvent (abstrata)
 
@@ -235,18 +235,6 @@ Resultado de uma validação executada pela chain do módulo `permission`. Event
 | `ipAddress`, `country` | String | origem; `country` enriquecido via OpenFeign |
 
 `type()` = `PERMISSION_CHECK`.
-
-### ProjectLifecycleEvent
-
-Mudança estrutural em um projeto.
-
-| Campo | Tipo | Observação |
-|---|---|---|
-| `action` | `LifecycleAction` enum | `CREATED`, `UPDATED`, `DELETED` |
-| `projectName` | String | nome no momento do evento |
-| `performedBy` | UUID | FK → `Client` responsável |
-
-`type()` = `PROJECT_LIFECYCLE`.
 
 ### AuditTrailEntry
 
@@ -341,4 +329,4 @@ Desde 30/09/2026 a trilha mora no `audit-service` (ADR-010), então a mudança a
 Vale registrar por quanto tempo a trilha é retida e evitar aceitar ali dados que identifiquem além do
 necessário — um id opaco basta, e-mail já é dado pessoal.
 
-Ver estrutura completa em `docs/DER.pdf`.
+Ver estrutura completa no `docs/DER.pdf` do repositório guarda-chuva.
