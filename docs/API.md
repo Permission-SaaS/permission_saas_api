@@ -2,11 +2,7 @@
 
 Cada endpoint implementado do `permission-service` (porta 8080): método, path, request/response e um exemplo de `curl`. Os endpoints do `audit-service` e o contrato da fila `audit.events` estão na [documentação dele](https://github.com/Permission-SaaS/permission_saas_audit/blob/main/docs/API.md); o endpoint do Config Server, no [README do `permission_saas_config`](https://github.com/Permission-SaaS/permission_saas_config#readme).
 
-Uma coleção Postman com todos os endpoints, encadeados por variáveis (`clientId` → `planId` → `apiKey` → `projectId`) e com asserções de status, está versionada no [repositório guarda-chuva](https://github.com/Permission-SaaS/permission_saas), em `docs/postman/permission-saas.postman_collection.json`. Para rodar a coleção inteira sem abrir o Postman, a partir da raiz do guarda-chuva:
-
-```bash
-npx newman run docs/postman/permission-saas.postman_collection.json
-```
+A coleção Postman do sistema está no [repositório guarda-chuva](https://github.com/Permission-SaaS/permission_saas), em `docs/postman/permission-saas.postman_collection.json`, com asserções em cada requisição. Os endpoints desta aplicação estão na pasta `2. permission_saas_api (8080)`, uma subpasta por módulo, e usam os dados que a pasta `1. Fluxo completo` cria (`clientId` → `planId` → `apiKey` → `projectId`). Como rodar a coleção pelo newman: `docs/RUNNING.md` do guarda-chuva, seção "Coleção do Postman".
 
 ## Formato padrão de erro
 
@@ -126,6 +122,18 @@ Cadastra um `Plan`.
 curl -X POST http://localhost:8080/plans \
   -H "Content-Type: application/json" \
   -d '{"name":"Pro","description":"Plano padrão","maxProjects":10,"maxUsersPerProject":50,"price":99.90}'
+```
+
+---
+
+### `GET /plans`
+
+Lista todos os planos cadastrados, ativos ou não (`FindAllPlansUseCase`).
+
+**Response** `200 OK` — array de `PlanResponse`, no mesmo formato do `GET /plans/{planId}` abaixo. Sem planos, devolve `[]`.
+
+```bash
+curl http://localhost:8080/plans
 ```
 
 ---
@@ -508,7 +516,7 @@ curl -F "file=@docs/postman/rotas-exemplo.csv" \
   http://localhost:8080/projects/0d2b1f9c-0000-0000-0000-000000000000/routes/import
 ```
 
-Cada execução fica registrada nas tabelas do Spring Batch (`batch_job_execution`, `batch_step_execution`), com status e contadores. No Postman: pasta `Importacao de rotas (Spring Batch)`.
+Cada execução fica registrada nas tabelas do Spring Batch (`batch_job_execution`, `batch_step_execution`), com status e contadores. No Postman: pasta `6. Spring Batch`, que cria e remove os próprios projetos e importa os dois CSVs.
 
 ---
 
@@ -611,7 +619,7 @@ Os filtros são aplicados pelo `audit-service`, no banco dele, por consulta JPQL
 { "status": 503, "error": "Service Unavailable", "message": "Audit service is unavailable", "timestamp": "..." }
 ```
 
-A pasta `audit-service fora do ar` do Postman reproduz o cenário inteiro. Com o serviço parado, a validação de permissão segue respondendo `200`, a mensagem dela espera na fila e a consulta devolve este `503`. Com o serviço religado, a trilha mostra o evento do período fora do ar, que não se perdeu.
+A subpasta `Consumidor fora do ar (manual)`, em `5. RabbitMQ` no Postman, reproduz o cenário inteiro. Com o serviço parado, a validação de permissão segue respondendo `200`, a mensagem dela espera na fila e a consulta devolve este `503`. Com o serviço religado, a trilha mostra o evento do período fora do ar, que não se perdeu.
 
 ```bash
 curl "http://localhost:8080/audit-events?onlyDenied=true"
