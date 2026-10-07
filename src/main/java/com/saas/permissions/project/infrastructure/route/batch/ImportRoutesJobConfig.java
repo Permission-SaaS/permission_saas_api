@@ -25,8 +25,8 @@ import com.saas.permissions.project.application.route.command.AddRouteToProjectC
  *        uma linha por vez   normaliza ou descarta   grava de 10 em 10
  * </pre>
  *
- * Quem dispara é o {@link BatchRouteImporter}, com os parâmetros {@code projectId} e
- * {@code file}.
+ * Quem dispara é o {@link BatchRouteImporter}, com os parâmetros {@code projectId},
+ * {@code file} e {@code delimiter}.
  */
 @Configuration
 public class ImportRoutesJobConfig {
@@ -38,19 +38,22 @@ public class ImportRoutesJobConfig {
     static final int MALFORMED_LINES_LIMIT = 10;
 
     /**
-     * Lê o CSV uma linha por vez, pulando o cabeçalho. O método devolve o tipo concreto
+     * Lê o CSV uma linha por vez, pulando o cabeçalho, com o separador ({@code ,} ou {@code ;})
+     * que o {@link BatchRouteImporter} encontrou. O método devolve o tipo concreto
      * (FlatFileItemReader) e não a interface ItemReader: com {@code @StepScope} o Spring
      * cria um proxy a partir do tipo declarado, e o step precisa ver que o reader abre e
      * fecha o arquivo.
      */
     @Bean
     @StepScope
-    FlatFileItemReader<RouteCsvLine> routeCsvReader(@Value("#{jobParameters['file']}") String file) {
+    FlatFileItemReader<RouteCsvLine> routeCsvReader(@Value("#{jobParameters['file']}") String file,
+            @Value("#{jobParameters['delimiter']}") String delimiter) {
         return new FlatFileItemReaderBuilder<RouteCsvLine>()
                 .name("routeCsvReader")
                 .resource(new FileSystemResource(file))
                 .linesToSkip(1)
                 .delimited()
+                .delimiter(delimiter)
                 .names("name", "httpMethod", "path", "description")
                 .targetType(RouteCsvLine.class)
                 .build();
