@@ -16,7 +16,6 @@ public class RegisterClientMapper implements Mapper<RegisterClientRequest, Regis
                 request.phone(),
                 request.rawPassword(),
                 request.provider(),
-                request.providerId()
-        );
+                request.providerId());
     }
 }

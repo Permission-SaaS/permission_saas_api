@@ -6,13 +6,13 @@ import java.util.UUID;
 import com.saas.permissions.project.api.roleroute.dto.RolePermissionResponse;
 
 public record RoleResponse(
-                UUID id,
-                UUID projectId,
-                String name,
-                String description,
-                boolean active,
-                List<RolePermissionResponse> permissions,
-                String createdAt,
-                String updatedAt) {
+        UUID id,
+        UUID projectId,
+        String name,
+        String description,
+        boolean active,
+        List<RolePermissionResponse> permissions,
+        String createdAt,
+        String updatedAt) {
 
 }

@@ -22,7 +22,7 @@ import com.saas.permissions.identity.domain.ClientRepository;
 public class RegisterClientUseCaseTest {
 
     @Mock
-     private ClientRepository clientRepository;
+    private ClientRepository clientRepository;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -32,9 +32,8 @@ public class RegisterClientUseCaseTest {
 
     private RegisterClientCommand validCommand() {
         return new RegisterClientCommand(
-            "Ana Silva", "ana@email.com", "11999990000",
-            "senha123",null, null
-        );
+                "Ana Silva", "ana@email.com", "11999990000",
+                "senha123", null, null);
     }
 
     @Test
@@ -53,7 +52,5 @@ public class RegisterClientUseCaseTest {
         assertTrue(registeredClient.getProvider() == AuthProvider.local);
         assertTrue(registeredClient.getProviderId() == null);
     }
-
-
 
 }

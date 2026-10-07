@@ -4,8 +4,8 @@ import jakarta.validation.constraints.Size;
 
 public record SearchProjectsRequest(
 
-                @Size(max = 120) String name,
+        @Size(max = 120) String name,
 
-                Boolean onlyActive) {
+        Boolean onlyActive) {
 
 }

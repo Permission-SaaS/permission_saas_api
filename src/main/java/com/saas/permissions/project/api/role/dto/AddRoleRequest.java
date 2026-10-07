@@ -5,8 +5,8 @@ import jakarta.validation.constraints.Size;
 
 public record AddRoleRequest(
 
-                @NotBlank @Size(max = 80) String name,
+        @NotBlank @Size(max = 80) String name,
 
-                @Size(max = 255) String description) {
+        @Size(max = 255) String description) {
 
 }

@@ -26,7 +26,6 @@ public class ClientResponseMapper implements Mapper<Client, ClientResponse> {
                 client.getLastLoginAt() != null ? client.getLastLoginAt().toString() : null,
                 client.getCreatedAt() != null ? client.getCreatedAt().toString() : null,
                 client.getUpdatedAt() != null ? client.getUpdatedAt().toString() : null,
-                client.getDeletedAt() != null ? client.getDeletedAt().toString() : null
-        );
+                client.getDeletedAt() != null ? client.getDeletedAt().toString() : null);
     }
 }

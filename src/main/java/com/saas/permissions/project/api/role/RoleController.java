@@ -30,25 +30,25 @@ import lombok.RequiredArgsConstructor;
 @Tag(name = "Roles", description = "Cargos de um projeto")
 public class RoleController {
 
-        private final AddRoleToProjectUseCase addRoleToProjectUseCase;
+    private final AddRoleToProjectUseCase addRoleToProjectUseCase;
 
-        private final AddRoleToProjectMapper addRoleToProjectMapper;
-        private final RoleResponseMapper roleResponseMapper;
+    private final AddRoleToProjectMapper addRoleToProjectMapper;
+    private final RoleResponseMapper roleResponseMapper;
 
-        @PostMapping
-        @Operation(summary = "Adiciona um cargo ao projeto")
-        @ApiResponses({
-                        @ApiResponse(responseCode = "201", description = "Cargo adicionado"),
-                        @ApiResponse(responseCode = "400", description = "Dados invalidos"),
-                        @ApiResponse(responseCode = "404", description = "Projeto inexistente ou excluido"),
-                        @ApiResponse(responseCode = "409", description = "Cargo duplicado ou limite do plano excedido")
-        })
-        public ResponseEntity<RoleResponse> addRole(
-                        @PathVariable UUID projectId,
-                        @RequestBody @Valid AddRoleRequest request) {
+    @PostMapping
+    @Operation(summary = "Adiciona um cargo ao projeto")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Cargo adicionado"),
+            @ApiResponse(responseCode = "400", description = "Dados invalidos"),
+            @ApiResponse(responseCode = "404", description = "Projeto inexistente ou excluido"),
+            @ApiResponse(responseCode = "409", description = "Cargo duplicado ou limite do plano excedido")
+    })
+    public ResponseEntity<RoleResponse> addRole(
+            @PathVariable UUID projectId,
+            @RequestBody @Valid AddRoleRequest request) {
 
-                Role role = addRoleToProjectUseCase.execute(addRoleToProjectMapper.map(projectId, request));
+        Role role = addRoleToProjectUseCase.execute(addRoleToProjectMapper.map(projectId, request));
 
-                return ResponseEntity.status(HttpStatus.CREATED).body(roleResponseMapper.map(role));
-        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(roleResponseMapper.map(role));
+    }
 }

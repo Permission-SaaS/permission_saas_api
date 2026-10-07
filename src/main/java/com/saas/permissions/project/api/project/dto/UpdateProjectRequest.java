@@ -5,10 +5,10 @@ import jakarta.validation.constraints.Size;
 
 public record UpdateProjectRequest(
 
-                @Size(max = 120) String name,
+        @Size(max = 120) String name,
 
-                @Size(max = 500) String description,
+        @Size(max = 500) String description,
 
-                @Min(1) Integer maxRoles) {
+        @Min(1) Integer maxRoles) {
 
 }

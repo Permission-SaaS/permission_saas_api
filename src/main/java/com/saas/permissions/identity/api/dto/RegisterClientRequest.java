@@ -16,5 +16,5 @@ public record RegisterClientRequest(
 
         AuthProvider provider,
 
-        String providerId
-) {}
+        String providerId) {
+}

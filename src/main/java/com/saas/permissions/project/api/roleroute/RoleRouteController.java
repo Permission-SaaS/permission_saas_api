@@ -32,60 +32,60 @@ import lombok.RequiredArgsConstructor;
 @Tag(name = "Role permissions", description = "Quais rotas cada cargo pode acessar, com historico de concessao e revogacao")
 public class RoleRouteController {
 
-        private final GrantRouteToRoleUseCase grantRouteToRoleUseCase;
-        private final RevokeRouteFromRoleUseCase revokeRouteFromRoleUseCase;
-        private final FindRolePermissionsUseCase findRolePermissionsUseCase;
+    private final GrantRouteToRoleUseCase grantRouteToRoleUseCase;
+    private final RevokeRouteFromRoleUseCase revokeRouteFromRoleUseCase;
+    private final FindRolePermissionsUseCase findRolePermissionsUseCase;
 
-        private final RolePermissionResponseMapper rolePermissionResponseMapper;
+    private final RolePermissionResponseMapper rolePermissionResponseMapper;
 
-        @PostMapping("/{routeId}")
-        @Operation(summary = "Concede ao cargo o acesso a uma rota do projeto")
-        @ApiResponses({
-                        @ApiResponse(responseCode = "201", description = "Acesso concedido"),
-                        @ApiResponse(responseCode = "404", description = "Projeto, cargo ou rota inexistente"),
-                        @ApiResponse(responseCode = "409", description = "O cargo ja possui concessao ativa nessa rota")
-        })
-        public ResponseEntity<RolePermissionResponse> grant(
-                        @PathVariable UUID projectId,
-                        @PathVariable UUID roleId,
-                        @PathVariable UUID routeId) {
+    @PostMapping("/{routeId}")
+    @Operation(summary = "Concede ao cargo o acesso a uma rota do projeto")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Acesso concedido"),
+            @ApiResponse(responseCode = "404", description = "Projeto, cargo ou rota inexistente"),
+            @ApiResponse(responseCode = "409", description = "O cargo ja possui concessao ativa nessa rota")
+    })
+    public ResponseEntity<RolePermissionResponse> grant(
+            @PathVariable UUID projectId,
+            @PathVariable UUID roleId,
+            @PathVariable UUID routeId) {
 
-                RoleRoute permission = grantRouteToRoleUseCase.execute(projectId, roleId, routeId);
+        RoleRoute permission = grantRouteToRoleUseCase.execute(projectId, roleId, routeId);
 
-                return ResponseEntity
-                                .status(HttpStatus.CREATED)
-                                .body(rolePermissionResponseMapper.map(permission));
-        }
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(rolePermissionResponseMapper.map(permission));
+    }
 
-        @DeleteMapping("/{routeId}")
-        @Operation(summary = "Revoga o acesso do cargo a uma rota, preservando o registro historico")
-        @ApiResponses({
-                        @ApiResponse(responseCode = "204", description = "Acesso revogado"),
-                        @ApiResponse(responseCode = "404", description = "Projeto, cargo, rota ou concessao ativa inexistente")
-        })
-        public ResponseEntity<Void> revoke(
-                        @PathVariable UUID projectId,
-                        @PathVariable UUID roleId,
-                        @PathVariable UUID routeId) {
+    @DeleteMapping("/{routeId}")
+    @Operation(summary = "Revoga o acesso do cargo a uma rota, preservando o registro historico")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Acesso revogado"),
+            @ApiResponse(responseCode = "404", description = "Projeto, cargo, rota ou concessao ativa inexistente")
+    })
+    public ResponseEntity<Void> revoke(
+            @PathVariable UUID projectId,
+            @PathVariable UUID roleId,
+            @PathVariable UUID routeId) {
 
-                revokeRouteFromRoleUseCase.execute(projectId, roleId, routeId);
+        revokeRouteFromRoleUseCase.execute(projectId, roleId, routeId);
 
-                return ResponseEntity.noContent().build();
-        }
+        return ResponseEntity.noContent().build();
+    }
 
-        @GetMapping
-        @Operation(summary = "Lista as rotas que o cargo pode acessar; com includeRevoked=true devolve tambem o historico")
-        @ApiResponses({
-                        @ApiResponse(responseCode = "200", description = "Lista devolvida com sucesso"),
-                        @ApiResponse(responseCode = "404", description = "Projeto ou cargo inexistente")
-        })
-        public ResponseEntity<List<RolePermissionResponse>> list(
-                        @PathVariable UUID projectId,
-                        @PathVariable UUID roleId,
-                        @RequestParam(required = false, defaultValue = "false") boolean includeRevoked) {
+    @GetMapping
+    @Operation(summary = "Lista as rotas que o cargo pode acessar; com includeRevoked=true devolve tambem o historico")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista devolvida com sucesso"),
+            @ApiResponse(responseCode = "404", description = "Projeto ou cargo inexistente")
+    })
+    public ResponseEntity<List<RolePermissionResponse>> list(
+            @PathVariable UUID projectId,
+            @PathVariable UUID roleId,
+            @RequestParam(required = false, defaultValue = "false") boolean includeRevoked) {
 
-                List<RoleRoute> permissions = findRolePermissionsUseCase.execute(projectId, roleId, includeRevoked);
+        List<RoleRoute> permissions = findRolePermissionsUseCase.execute(projectId, roleId, includeRevoked);
 
-                return ResponseEntity.ok(permissions.stream().map(rolePermissionResponseMapper::map).toList());
-        }
+        return ResponseEntity.ok(permissions.stream().map(rolePermissionResponseMapper::map).toList());
+    }
 }

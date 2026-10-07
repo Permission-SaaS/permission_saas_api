@@ -9,12 +9,12 @@ import jakarta.validation.constraints.Size;
 
 public record CreateProjectRequest(
 
-                @NotNull UUID clientId,
+        @NotNull UUID clientId,
 
-                @NotBlank @Size(max = 120) String name,
+        @NotBlank @Size(max = 120) String name,
 
-                @Size(max = 500) String description,
+        @Size(max = 500) String description,
 
-                @NotNull @Min(1) Integer maxRoles) {
+        @NotNull @Min(1) Integer maxRoles) {
 
 }

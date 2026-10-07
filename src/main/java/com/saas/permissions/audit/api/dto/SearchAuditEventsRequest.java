@@ -10,13 +10,13 @@ import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Pattern;
 
 public record SearchAuditEventsRequest(
-                @Pattern(regexp = "(?i)PERMISSION_CHECK|PROJECT_LIFECYCLE", message = "must be a known audit event type") String type,
+        @Pattern(regexp = "(?i)PERMISSION_CHECK|PROJECT_LIFECYCLE", message = "must be a known audit event type") String type,
 
-                UUID projectId,
+        UUID projectId,
 
-                Boolean onlyDenied,
+        Boolean onlyDenied,
 
-                @DateTimeFormat(iso = ISO.DATE_TIME) @PastOrPresent OffsetDateTime from,
-                @DateTimeFormat(iso = ISO.DATE_TIME) OffsetDateTime to) {
+        @DateTimeFormat(iso = ISO.DATE_TIME) @PastOrPresent OffsetDateTime from,
+        @DateTimeFormat(iso = ISO.DATE_TIME) OffsetDateTime to) {
 
 }

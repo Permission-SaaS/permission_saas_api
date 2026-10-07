@@ -7,14 +7,14 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
 public record RegisterPlanRequest(
-                @NotBlank String name,
+        @NotBlank String name,
 
-                String description,
+        String description,
 
-                @Positive int maxProjects,
+        @Positive int maxProjects,
 
-                @Positive int maxUsersPerProject,
+        @Positive int maxUsersPerProject,
 
-                @NotNull @Positive BigDecimal price) {
+        @NotNull @Positive BigDecimal price) {
 
 }

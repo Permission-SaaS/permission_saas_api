@@ -3,9 +3,9 @@ package com.saas.permissions.billing.application.plan.command;
 import java.math.BigDecimal;
 
 public record RegisterPlanCommand(
-                String name,
-                String description,
-                int maxProjects,
-                int maxUsersPerProject,
-                BigDecimal price) {
+        String name,
+        String description,
+        int maxProjects,
+        int maxUsersPerProject,
+        BigDecimal price) {
 }

@@ -7,15 +7,15 @@ import java.util.List;
 import java.util.UUID;
 
 public record ProjectResponse(
-                UUID id,
-                UUID clientId,
-                String name,
-                String description,
-                Integer maxRoles,
-                boolean active,
-                String createdAt,
-                String updatedAt,
-                List<RoleResponse> roles,
-                List<RouteResponse> routes) {
+        UUID id,
+        UUID clientId,
+        String name,
+        String description,
+        Integer maxRoles,
+        boolean active,
+        String createdAt,
+        String updatedAt,
+        List<RoleResponse> roles,
+        List<RouteResponse> routes) {
 
 }
