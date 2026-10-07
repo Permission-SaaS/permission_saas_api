@@ -3,6 +3,8 @@ package com.saas.permissions.project.infrastructure.route.batch;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,11 +28,14 @@ import com.saas.permissions.project.domain.route.RouteImporter;
  * Dispara o job {@code importRoutesJob} e devolve os contadores do step. O reader do
  * Batch lê de um arquivo em disco, então o CSV recebido é copiado para um arquivo
  * temporário, que some no fim da execução. O separador do CSV sai do cabeçalho:
- * {@code ;}, que é como o Excel em português salva, ou {@code ,}. O job roda na mesma
+ * {@code ;}, que é como o Excel em português salva, ou {@code ,}. O encoding sai do
+ * conteúdo: UTF-8 ou Windows-1252, que é como o Excel salva no Windows. O job roda na mesma
  * thread da requisição: o arquivo é pequeno e quem importa quer o resumo na resposta.
  */
 @Component
 public class BatchRouteImporter implements RouteImporter {
+
+    private static final String WINDOWS_1252 = "windows-1252";
 
     private final JobOperator jobOperator;
     private final Job importRoutesJob;
@@ -55,6 +60,7 @@ public class BatchRouteImporter implements RouteImporter {
                 .addString("projectId", projectId.toString())
                 .addString("file", csvFile.toAbsolutePath().toString())
                 .addString("delimiter", findDelimiter(csvFile))
+                .addString("encoding", findEncoding(csvFile))
                 .addLong("requestedAt", System.currentTimeMillis())
                 .toJobParameters();
 
@@ -91,6 +97,24 @@ public class BatchRouteImporter implements RouteImporter {
             Files.deleteIfExists(file);
         } catch (IOException ignored) {
             // arquivo temporário: o sistema limpa se ficar para trás
+        }
+    }
+
+    /**
+     * UTF-8 se o arquivo inteiro for UTF-8 válido; senão, Windows-1252. Sem isso, um CSV do Excel
+     * no Windows chegava com os acentos trocados por "�", sem erro nenhum: o reader troca em
+     * silêncio o que não entende. O teste é decodificar em UTF-8 estrito: um texto em
+     * Windows-1252 com acento quase nunca forma UTF-8 válido por acaso, e um arquivo só com ASCII
+     * é igual nos dois.
+     */
+    private static String findEncoding(Path csvFile) {
+        try {
+            StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(Files.readAllBytes(csvFile)));
+            return StandardCharsets.UTF_8.name();
+        } catch (CharacterCodingException e) {
+            return WINDOWS_1252;
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not read the CSV", e);
         }
     }
 

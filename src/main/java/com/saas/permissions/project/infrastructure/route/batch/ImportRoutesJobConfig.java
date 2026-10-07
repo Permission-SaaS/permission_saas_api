@@ -26,7 +26,7 @@ import com.saas.permissions.project.application.route.command.AddRouteToProjectC
  * </pre>
  *
  * Quem dispara é o {@link BatchRouteImporter}, com os parâmetros {@code projectId},
- * {@code file} e {@code delimiter}.
+ * {@code file}, {@code delimiter} e {@code encoding}.
  */
 @Configuration
 public class ImportRoutesJobConfig {
@@ -39,18 +39,20 @@ public class ImportRoutesJobConfig {
 
     /**
      * Lê o CSV uma linha por vez, pulando o cabeçalho, com o separador ({@code ,} ou {@code ;})
-     * que o {@link BatchRouteImporter} encontrou. O método devolve o tipo concreto
-     * (FlatFileItemReader) e não a interface ItemReader: com {@code @StepScope} o Spring
-     * cria um proxy a partir do tipo declarado, e o step precisa ver que o reader abre e
-     * fecha o arquivo.
+     * e o encoding (UTF-8 ou Windows-1252) que o {@link BatchRouteImporter} encontrou. O método
+     * devolve o tipo concreto (FlatFileItemReader) e não a interface ItemReader: com
+     * {@code @StepScope} o Spring cria um proxy a partir do tipo declarado, e o step precisa ver
+     * que o reader abre e fecha o arquivo.
      */
     @Bean
     @StepScope
     FlatFileItemReader<RouteCsvLine> routeCsvReader(@Value("#{jobParameters['file']}") String file,
-            @Value("#{jobParameters['delimiter']}") String delimiter) {
+            @Value("#{jobParameters['delimiter']}") String delimiter,
+            @Value("#{jobParameters['encoding']}") String encoding) {
         return new FlatFileItemReaderBuilder<RouteCsvLine>()
                 .name("routeCsvReader")
                 .resource(new FileSystemResource(file))
+                .encoding(encoding)
                 .linesToSkip(1)
                 .delimited()
                 .delimiter(delimiter)

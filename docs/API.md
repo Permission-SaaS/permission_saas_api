@@ -487,7 +487,9 @@ Criar pedido,post,/orders,Cria um pedido
 Detalhar pedido,GET,orders/{id},Detalhe de um pedido
 ```
 
-**Separador:** vírgula ou ponto e vírgula, que é como o Excel em português salva CSV, porque usa a vírgula como separador decimal. Antes de disparar o job, o `BatchRouteImporter` olha a primeira linha não vazia do arquivo: se ela tiver `;`, o separador é `;`; senão, `,`. O separador escolhido vai para o job como o parâmetro `delimiter`. Um valor que contenha o separador vai entre aspas (`"Lista, com vírgula"`). O mesmo exemplo com ponto e vírgula está em `docs/postman/rotas-exemplo-ponto-e-virgula.csv`, também no guarda-chuva:
+**Separador:** vírgula ou ponto e vírgula, que é como o Excel em português salva CSV, porque usa a vírgula como separador decimal. Antes de disparar o job, o `BatchRouteImporter` olha a primeira linha não vazia do arquivo: se ela tiver `;`, o separador é `;`; senão, `,`. O separador escolhido vai para o job como o parâmetro `delimiter`.
+
+**Encoding:** UTF-8 (com ou sem BOM, como o Excel salva na opção "CSV UTF-8") ou Windows-1252, como o Excel salva "CSV (separado por vírgulas)" no Windows. O `BatchRouteImporter` tenta decodificar o arquivo inteiro em UTF-8 estrito: se conseguir, é UTF-8; se não, Windows-1252. O resultado vai para o job como o parâmetro `encoding`. Sem essa detecção, um arquivo em Windows-1252 era importado sem erro, mas com cada acento trocado por `�`. Um valor que contenha o separador vai entre aspas (`"Lista, com vírgula"`). O mesmo exemplo com ponto e vírgula está em `docs/postman/rotas-exemplo-ponto-e-virgula.csv`, também no guarda-chuva:
 
 ```csv
 name;httpMethod;path;description
